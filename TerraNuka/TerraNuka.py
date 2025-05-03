@@ -2,6 +2,8 @@ import pygame
 import math
 from enum import Enum, auto
 from dataclasses import dataclass
+from noise import pnoise1
+import random
 
 @dataclass
 class Bounds:
@@ -73,7 +75,14 @@ pygame.display.set_caption("Scorched Earth Prototype")
 clock = pygame.time.Clock()
 
 # --- Terrain initialize ---
-terrain_heights = [100 for x in range(WIDTH)]
+terrain_heights = generate_terrain(
+    WIDTH,
+    min_height=50,
+    max_height=bounds.y2 - 50,
+    scale=150.0,
+    octaves=5,
+    seed=42
+)
 terrain_color = (40, 180, 0) # hopefully medium green with a tinge of yellow
 
 # --- Tank state ---
@@ -159,6 +168,19 @@ def draw_explosion_preview(screen, x_center, y_center, radius):
     screen.blit(alpha_surface, (0, 0))
     pygame.display.flip()
 
+
+def generate_terrain(width, min_height, max_height, scale=100.0, octaves=4, seed=None):
+    if seed is None:
+        seed = random.randint(0, 10000)
+
+    terrain = []
+    for x in range(width):
+        noise_val = pnoise1(x / scale + seed, octaves=octaves)
+        # Normalize noise_val (-1 to 1) -> (0 to 1)
+        normalized = (noise_val + 1) / 2
+        height = int(min_height + normalized * (max_height - min_height))
+        terrain.append(height)
+    return terrain
 
 # --- Main loop ---
 running = True
