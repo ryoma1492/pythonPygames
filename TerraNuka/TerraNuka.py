@@ -21,6 +21,24 @@ class Tank:
     x: float
     y: float
 
+    def aim(self, direction: str):
+        """Adjust the aim angle of the tank."""
+        if direction == "left":
+            self.aimAngle = min(180, self.aimAngle + 1)
+        elif direction == "right":
+            self.aimAngle = max(0, self.aimAngle - 1)
+
+    def fire(self, shot_speed: float) -> "Projectile":
+        """Fire a projectile from the tank."""
+        rad = math.radians(self.aimAngle)
+        return Projectile(
+            x=self.x + math.cos(rad) * self.cannonLen,
+            y=self.y - math.sin(rad) * self.cannonLen,
+            vx=shot_speed * math.cos(rad),
+            vy=-shot_speed * math.sin(rad),
+            strength=20
+        )
+    
 @dataclass
 class Projectile:
     x: float
@@ -156,18 +174,11 @@ while running:
     # --- Input ---
     keys = pygame.key.get_pressed()
     if keys[pygame.K_LEFT]:
-        tank1.aimAngle = min(180, tank1.aimAngle + 1)
+        tank1.aim("left")
     if keys[pygame.K_RIGHT]:
-        tank1.aimAngle = max(0, tank1.aimAngle - 1)
+        tank1.aim("right")
     if keys[pygame.K_SPACE] and projectile is None:
-        rad = math.radians(tank1.aimAngle)
-        projectile = Projectile (
-            x= tank1.x, 
-            y= tank1.y,
-            vx= SHOT_SPEED * math.cos(rad),
-            vy= -SHOT_SPEED * math.sin(rad),
-            strength= 20
-        )
+        projectile = tank1.fire(SHOT_SPEED)
 
     # --- Draw Terrain ---
     terrain_coords = [(0, bounds.y2)]  # Start at bottom-left corner
