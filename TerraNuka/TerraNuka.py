@@ -13,6 +13,30 @@ class Bounds:
     y2: int
 
 @dataclass
+class Terrain:
+    heightMap: list[int]
+    color: tuple[int, int, int]
+    seed: int = random.randint(0, 10000)
+    max_height: int = 250
+    min_height: int = 10
+    scale=150.0,
+    octaves=5,
+    def __post_init__(self):
+        self.heightMap = self.generate_terrain()
+        self.color = (40, 180, 0)  # Default color
+    def generate_terrain(self):
+        if self.seed is None:
+            self.seed = random.randint(0, 10000)
+        terrain = []
+        for x in range(WIDTH):
+            noise_val = pnoise1(x / self.scale + self.seed, self.octaves)
+            # Normalize noise_val (-1 to 1) -> (0 to 1)
+            normalized = (noise_val + 1) / 2
+            height = int(self.min_height + normalized * (self.max_height - self.min_height))
+            terrain.append(height)
+        return terrain
+
+@dataclass
 class Tank:
     height: float
     width: float
@@ -75,19 +99,16 @@ pygame.display.set_caption("Scorched Earth Prototype")
 clock = pygame.time.Clock()
 
 # --- Terrain initialize ---
-terrain_heights = generate_terrain(
-    WIDTH,
-    min_height=50,
-    max_height=bounds.y2 - 50,
+terrain = Terrain(
+    min_height=10,
+    max_height=bounds.y2 - 250,
     scale=150.0,
-    octaves=5,
-    seed=42
 )
-terrain_color = (40, 180, 0) # hopefully medium green with a tinge of yellow
+terrain.color = (40, 180, 0) # hopefully medium green with a tinge of yellow
 
 # --- Tank state ---
 tank1 = Tank(12, 24, 4, 0, 20, 45, WIDTH // 4, bounds.y2 - 20)
-tank1.y = bounds.y2 - tank1.height - terrain_heights[tank1.x]
+tank1.y = bounds.y2 - tank1.height - terrain.heightMap[tank1.x]
 projectile = None  # Will be a dict when active
 
 # --- Helper Functions ---
@@ -169,19 +190,6 @@ def draw_explosion_preview(screen, x_center, y_center, radius):
     pygame.display.flip()
 
 
-def generate_terrain(width, min_height, max_height, scale=100.0, octaves=4, seed=None):
-    if seed is None:
-        seed = random.randint(0, 10000)
-
-    terrain = []
-    for x in range(width):
-        noise_val = pnoise1(x / scale + seed, octaves=octaves)
-        # Normalize noise_val (-1 to 1) -> (0 to 1)
-        normalized = (noise_val + 1) / 2
-        height = int(min_height + normalized * (max_height - min_height))
-        terrain.append(height)
-    return terrain
-
 # --- Main loop ---
 running = True
 while running:
@@ -206,11 +214,11 @@ while running:
     terrain_coords = [(0, bounds.y2)]  # Start at bottom-left corner
 
     for x in range(WIDTH):
-        terrain_coords.append((x, bounds.y2 - terrain_heights[x]))
+        terrain_coords.append((x, bounds.y2 - terrain.heightMap[x]))
 
     terrain_coords.append((WIDTH - 1, bounds.y2))  # End at bottom-right
 
-    pygame.draw.polygon(screen, terrain_color, terrain_coords)
+    pygame.draw.polygon(screen, terrain.color, terrain_coords)
 
     # --- Draw tank ---
     pygame.draw.rect(screen, (200, 200, 0), (tank1.x, tank1.y, tank1.width, tank1.height))
@@ -233,7 +241,7 @@ while running:
 
         # Check Collision & Remove if off-screen
     if projectile:
-        collision = check_projectile_collision(projectile.x, projectile.y, terrain_heights, WIDTH, HEIGHT)
+        collision = check_projectile_collision(projectile.x, projectile.y, terrain.heightMap, WIDTH, HEIGHT)
 
         match collision:
             case CollisionResult.HIT_TERRAIN:
@@ -269,7 +277,7 @@ while running:
         Shot_Show_Timer += clock.get_time()
 
         if Shot_Show_Timer >= Shot_Show_Timer_Max:
-            apply_explosion_with_collapse(terrain_heights, impact_x, impact_y, radius)
+            apply_explosion_with_collapse(terrain.heightMap, impact_x, impact_y, radius)
             Shot_Is_Timing = False
             Shot_Show_Timer = 0
             Pending_Explosion = None
