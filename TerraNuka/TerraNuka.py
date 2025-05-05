@@ -59,6 +59,8 @@ class Tank:
     y: float
     cannonPower: float = 30
     aimAngle: float = 45
+    health: float = 100
+    max_health: float = 100
     strength: float = 15
     fuel: float = .1
 
@@ -187,6 +189,28 @@ def apply_explosion_with_collapse(terrain_heights, x_center, y_center, radius=20
             if height_diff > 0:
                 terrain_heights[x] = min(bounds.y2, terrain_heights[x] + height_diff)
 
+def apply_explosion_damage(tank, projectile):
+    # Use projectile's strength for both radius and max damage
+    explosion_x = projectile.x
+    explosion_y = projectile.y
+    radius = projectile.strength
+    max_damage = projectile.strength
+
+    # Find closest point on tank's rectangle to the explosion
+    closest_x = max(tank.x, min(explosion_x, tank.x + tank.width))
+    closest_y = max(tank.y, min(explosion_y, tank.y + tank.height))
+
+    dx = closest_x - explosion_x
+    dy = closest_y - explosion_y
+    distance = math.sqrt(dx ** 2 + dy ** 2)
+
+    if distance < radius:
+        damage = max_damage * (1 - (distance / radius))
+        tank.health -= int(damage)
+        tank.health = max(0, tank.health)
+
+
+# --- Draw helper functions ---
 
 def draw_explosion_preview(screen, x_center, y_center, radius):
     preview_color = (255, 50, 50)
@@ -280,6 +304,22 @@ def draw_hud(screen, tank, player_name, player_color, hud_height=100):
     power_label = font.render("POWER", True, (255, 255, 255))
     screen.blit(power_label, (triangle_x, triangle_y + 10))
 
+def draw_health_bar(screen, tank, bar_width=30, bar_height=6):
+    # Position it just above the tank
+    health_ratio = tank.health / tank.max_health
+    x = tank.x + tank.width // 2 - bar_width // 2
+    y = tank.y - 38  # adjust as needed
+
+    # Background border
+    pygame.draw.rect(screen, (80, 80, 80), (x, y, bar_width, bar_height))
+
+    # Filled health bar
+    fill_width = int(bar_width * health_ratio)
+    pygame.draw.rect(screen, (0, 255, 0), (x, y, fill_width, bar_height))
+
+    # foreground border
+    pygame.draw.rect(screen, (180, 180, 180), (x-1, y-1, bar_width+1, bar_height+1), 1)
+
 
 # --- Main loop ---
 running = True
@@ -332,6 +372,7 @@ while running:
         tank1.y - math.sin(aim_rad) * tank1.cannonLen
     )
     pygame.draw.line(screen, (255, 0, 0), (tank1.x,tank1.y), line_end, 3)
+    draw_health_bar(screen, tank1)
 
     # --- Update projectile ---
     if projectile:
@@ -351,7 +392,8 @@ while running:
                 draw_explosion_preview(screen, projectile.x, projectile.y, projectile.strength)
                 Shot_Show_Timer = 0
                 Pending_Explosion = (int(projectile.x), int(projectile.y), projectile.strength)
-#                apply_explosion_with_collapse(terrain_heights, int(projectile.x), int(projectile.y), projectile.strength)
+                for tank in [tank1]:
+                    apply_explosion_damage(tank, projectile)
                 projectile = None
 
             case CollisionResult.HIT_TANK:
