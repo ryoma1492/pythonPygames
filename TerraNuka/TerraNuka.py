@@ -125,7 +125,28 @@ tank1.y = bounds.y2 - tank1.height - terrain.heightMap[tank1.x]
 projectile = None  # Will be a dict when active
 
 # --- Helper Functions ---
-def check_projectile_collision(x: float, y: float, terrain_heights: list[int], width: int, height: int) -> CollisionResult:
+def check_projectile_collision(x: float, y: float, terrain_heights: list[int], width: int, height: int, tanks: list) -> CollisionResult:
+    if x < 0 or x >= width or y >= height:
+        return CollisionResult.MISS_OFFSCREEN
+
+    if y < 0:
+        return CollisionResult.MISS_OFFTOP  # Still in flight
+
+    # Check collision with terrain
+    terrain_x = int(x)
+    if 0 <= terrain_x < len(terrain_heights):
+        if y >= (bounds.y2 - terrain_heights[terrain_x]):
+            return CollisionResult.HIT_TERRAIN
+
+    # Check collision with any tank
+    for tank in tanks:
+        tank_rect = pygame.Rect(tank.x, tank.y, tank.width, tank.height)
+        if tank_rect.collidepoint(x, y):
+            return CollisionResult.HIT_TANK
+
+    return CollisionResult.NO_COLLISION
+# Original function for reference
+def check_projectile_collision_orig(x: float, y: float, terrain_heights: list[int], width: int, height: int) -> CollisionResult:
     if x < 0 or x >= width or y >= height:
         return CollisionResult.MISS_OFFSCREEN
 
@@ -209,6 +230,16 @@ def apply_explosion_damage(tank, projectile):
         tank.health -= int(damage)
         tank.health = max(0, tank.health)
 
+def apply_gravity_to_tank(tank, terrain_heights, max_height):
+    terrain_x_start = int(tank.x)
+    terrain_x_end = int(tank.x + tank.width)
+
+    # Find the highest terrain under this tank's width span
+    max_ground_y = max(max_height - terrain_heights[x] for x in range(terrain_x_start, terrain_x_end))
+
+    tank_bottom = tank.y + tank.height
+#    if tank_bottom < max_ground_y:
+#        tank.y += 1  # Fall by 1 pixel; increase for faster falling
 
 # --- Draw helper functions ---
 
@@ -363,6 +394,8 @@ while running:
 
     pygame.draw.polygon(screen, terrain.color, terrain_coords)
 
+    # apply gravity to tank
+    apply_gravity_to_tank(tank1, terrain.heightMap, bounds.y2)
     # --- Draw tank ---
     pygame.draw.rect(screen, (200, 200, 0), (tank1.x, tank1.y, tank1.width, tank1.height))
     aim_rad = math.radians(tank1.aimAngle)
@@ -385,7 +418,7 @@ while running:
 
         # Check Collision & Remove if off-screen
     if projectile:
-        collision = check_projectile_collision(projectile.x, projectile.y, terrain.heightMap, WIDTH, HEIGHT)
+        collision = check_projectile_collision(projectile.x, projectile.y, terrain.heightMap, WIDTH, HEIGHT, [tank1])
 
         match collision:
             case CollisionResult.HIT_TERRAIN:
@@ -397,7 +430,8 @@ while running:
                 projectile = None
 
             case CollisionResult.HIT_TANK:
-                print("Direct hit on a tank!")
+                for tank in [tank1]:
+                    apply_explosion_damage(tank, projectile)
                 projectile = None
 
             case CollisionResult.MISS_OFFSCREEN:
