@@ -1,7 +1,7 @@
 import pygame
 import math
 from enum import Enum, auto
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from noise import pnoise1
 import random
 
@@ -14,26 +14,38 @@ class Bounds:
 
 @dataclass
 class Terrain:
-    heightMap: list[int]
-    color: tuple[int, int, int]
+    heightMap: list[int] = field(init=False)
+    color: tuple[int, int, int] = field(init=False)
     seed: int = random.randint(0, 10000)
-    max_height: int = 250
+    max_height: int = 540
     min_height: int = 10
-    scale=150.0,
-    octaves=5,
+    scale=360
+    octaves=3
     def __post_init__(self):
         self.heightMap = self.generate_terrain()
         self.color = (40, 180, 0)  # Default color
     def generate_terrain(self):
         if self.seed is None:
             self.seed = random.randint(0, 10000)
-        terrain = []
+        tempTerrain = []
+
+        # Step 1: Collect raw noise values
         for x in range(WIDTH):
-            noise_val = pnoise1(x / self.scale + self.seed, self.octaves)
-            # Normalize noise_val (-1 to 1) -> (0 to 1)
-            normalized = (noise_val + 1) / 2
+            noise_val = pnoise1(x / self.scale + self.seed, octaves=self.octaves)
+            tempTerrain.append(noise_val)
+
+        # Step 2: Find the actual min and max of the noise
+        min_val = min(tempTerrain)
+        max_val = max(tempTerrain)
+        val_range = max_val - min_val if max_val != min_val else 1  # avoid divide by zero
+
+        # Step 3: Normalize to 0-1 based on actual range, then scale to min/max height
+        terrain = []
+        for raw in tempTerrain:
+            normalized = (raw - min_val) / val_range
             height = int(self.min_height + normalized * (self.max_height - self.min_height))
             terrain.append(height)
+
         return terrain
 
 @dataclass
@@ -43,9 +55,12 @@ class Tank:
     cannonRelX: float
     cannonRelY: float
     cannonLen: float
-    aimAngle: float
     x: float
     y: float
+    cannonPower: float = 30
+    aimAngle: float = 45
+    strength: float = 15
+    fuel: float = .1
 
     def aim(self, direction: str):
         """Adjust the aim angle of the tank."""
@@ -57,12 +72,13 @@ class Tank:
     def fire(self, shot_speed: float) -> "Projectile":
         """Fire a projectile from the tank."""
         rad = math.radians(self.aimAngle)
+        shot_speed = shot_speed/2.4
         return Projectile(
             x=self.x + math.cos(rad) * self.cannonLen,
             y=self.y - math.sin(rad) * self.cannonLen,
             vx=shot_speed * math.cos(rad),
             vy=-shot_speed * math.sin(rad),
-            strength=20
+            strength=self.strength
         )
     
 @dataclass
@@ -83,11 +99,10 @@ class CollisionResult(Enum):
 
 
 # --- Constants ---
-WIDTH, HEIGHT = 1000, 640
+WIDTH, HEIGHT = 1000, 720
 bounds = Bounds(5, WIDTH - 5, 5, HEIGHT - 105)
 FPS = 60
 GRAVITY = 0.5
-SHOT_SPEED = 15
 Shot_Show_Timer = 0
 Shot_Show_Timer_Max = 333  # in milliseconds
 Pending_Explosion = None  # will store (x, y, radius)
@@ -99,15 +114,11 @@ pygame.display.set_caption("Scorched Earth Prototype")
 clock = pygame.time.Clock()
 
 # --- Terrain initialize ---
-terrain = Terrain(
-    min_height=10,
-    max_height=bounds.y2 - 250,
-    scale=150.0,
-)
+terrain = Terrain()
 terrain.color = (40, 180, 0) # hopefully medium green with a tinge of yellow
 
 # --- Tank state ---
-tank1 = Tank(12, 24, 4, 0, 20, 45, WIDTH // 4, bounds.y2 - 20)
+tank1 = Tank(height=12, width=24, cannonRelX=4, cannonRelY=0, cannonLen=20, x=WIDTH // 4, y=bounds.y2-20, aimAngle=45)
 tank1.y = bounds.y2 - tank1.height - terrain.heightMap[tank1.x]
 projectile = None  # Will be a dict when active
 
@@ -189,6 +200,62 @@ def draw_explosion_preview(screen, x_center, y_center, radius):
     screen.blit(alpha_surface, (0, 0))
     pygame.display.flip()
 
+def draw_hud(screen, tank, player_name, player_color, hud_height=100):
+    """Draw the HUD with a half-moon angle indicator, speedometer-like fuel gauge, and odometer-style missile type."""
+    # HUD background
+    pygame.draw.rect(screen, (20, 20, 20), (0, HEIGHT - hud_height, WIDTH, hud_height))
+
+    # Borders
+    pygame.draw.rect(screen, (200, 200, 200), (0, HEIGHT - hud_height - 10, WIDTH, 10))  # Top HUD border
+    pygame.draw.rect(screen, (200, 200, 200), (0, 0, WIDTH, 5))  # Top border
+    pygame.draw.rect(screen, (200, 200, 200), (0, 0, 5, HEIGHT))  # Left border
+    pygame.draw.rect(screen, (200, 200, 200), (WIDTH - 5, 0, 5, HEIGHT))  # Right border
+
+    font = pygame.font.SysFont("consolas", 22)
+
+    # --- Player Indicator ---
+    player_label = font.render(player_name, True, player_color)
+    pygame.draw.rect(screen, player_color, (20, HEIGHT - hud_height + 10, 150, 30))  # Background for player name
+    screen.blit(player_label, (25, HEIGHT - hud_height + 15))
+
+    # --- Half-Moon Angle Indicator ---
+    angle_center = (240, HEIGHT - hud_height + 70)
+    angle_radius = 40
+    pygame.draw.arc(screen, (255, 255, 255), 
+                    (angle_center[0] - angle_radius, angle_center[1] - angle_radius, 
+                     angle_radius * 2, angle_radius * 2), 
+                    math.radians(0), math.radians(180), 3)
+    # Draw the current angle
+    angle_rad = math.radians(tank.aimAngle)
+    angle_x = angle_center[0] + angle_radius * math.cos(angle_rad)
+    angle_y = angle_center[1] - angle_radius * math.sin(angle_rad)
+    pygame.draw.line(screen, (255, 0, 0), angle_center, (angle_x, angle_y), 3)
+    angle_label = font.render(f"{tank.aimAngle}°", True, (220, 220, 220))
+    screen.blit(angle_label, (angle_center[0] - 40, angle_center[1] + 5))
+
+    # --- Fuel Gauge as Horizontal Bar ---
+    fuel_bar_width = 120
+    fuel_bar_height = 20
+    fuel_bar_x = 340
+    fuel_bar_y = HEIGHT - hud_height + 40
+    fuel_level = tank.fuel  # Replace with actual dynamic value
+    pygame.draw.rect(screen, (255, 255, 255), (fuel_bar_x, fuel_bar_y, fuel_bar_width, fuel_bar_height), 2)
+    fill_width = int(fuel_bar_width * fuel_level)
+    pygame.draw.rect(screen, (255, 0, 0), (fuel_bar_x, fuel_bar_y, fill_width, fuel_bar_height))
+    fuel_label = font.render("FUEL", True, (220, 220, 220))
+    screen.blit(fuel_label, (fuel_bar_x + fuel_bar_width // 2 - 50, fuel_bar_y - 25))
+
+    # --- Odometer-Style Missile Type ---
+    missile_label = font.render("MISSILE", True, (255, 255, 255))
+    missile_type = font.render("Baby Missile", True, (255, 255, 255))  # Placeholder for actual missile type
+    pygame.draw.rect(screen, (50, 50, 50), (600, HEIGHT - hud_height + 10, 200, 60))  # Background
+    pygame.draw.rect(screen, (200, 200, 200), (600, HEIGHT - hud_height + 10, 200, 60), 3)  # Border
+    screen.blit(missile_label, (610, HEIGHT - hud_height + 15))
+    screen.blit(missile_type, (610, HEIGHT - hud_height + 40))
+
+    # --- Power Indicator ---
+    power_label = font.render("POWER:" + str(tank.cannonPower), True, (255, 255, 255))  # Fixed for now
+    screen.blit(power_label, (820, HEIGHT - hud_height + 40))
 
 # --- Main loop ---
 running = True
@@ -207,8 +274,20 @@ while running:
         tank1.aim("left")
     if keys[pygame.K_RIGHT]:
         tank1.aim("right")
+    if keys[pygame.K_UP]:
+        tank1.cannonPower = min(100, tank1.cannonPower + .1)
+    if keys[pygame.K_DOWN]:
+        tank1.cannonPower = max(0, tank1.cannonPower - .1)
+    if keys[pygame.K_RCTRL] and tank1.fuel > 0:
+        tank1.fuel -= 0.001
+        tank1.x += .1
+        tank1.y = bounds.y2 - tank1.height - terrain.heightMap[int(tank1.x)]
+    if keys[pygame.K_LALT] and tank1.fuel > 0:
+        tank1.fuel -= 0.001
+        tank1.x -= .1
+        tank1.y = bounds.y2 - tank1.height - terrain.heightMap[int(tank1.x)]
     if keys[pygame.K_SPACE] and projectile is None:
-        projectile = tank1.fire(SHOT_SPEED)
+        projectile = tank1.fire(tank1.cannonPower)
 
     # --- Draw Terrain ---
     terrain_coords = [(0, bounds.y2)]  # Start at bottom-left corner
@@ -287,29 +366,8 @@ while running:
         pygame.draw.circle(screen, (255, 255, 255), (int(projectile.x), int(projectile.y)), 4)
 
     # --- Draw HUD ---
-    HUD_HEIGHT = 100
-    pygame.draw.rect(screen, (20, 20, 20), (0, HEIGHT - HUD_HEIGHT, WIDTH, HUD_HEIGHT))
-    pygame.draw.rect(screen, (200, 200, 200), (0, HEIGHT - HUD_HEIGHT-10, WIDTH, 10))
-    pygame.draw.rect(screen, (200, 200, 200), (0, 0, WIDTH, 5))
-    pygame.draw.rect(screen, (200, 200, 200), (0, 0, 5, HEIGHT))
-    pygame.draw.rect(screen, (200, 200, 200), (WIDTH-5, 0, 5, HEIGHT))
-
-    font = pygame.font.SysFont("consolas", 22)
-
-    # Dashboard-style labels
-    angle_label = font.render(f"ANGLE: {tank1.aimAngle}°", True, (255, 255, 255))
-    ammo_label = font.render("AMMO: ∞", True, (255, 255, 255))  # Placeholder
-    cannon_label = font.render("CANNON: Baby Missile", True, (255, 255, 255))
-    fuel_label = font.render("FUEL: 0", True, (255, 255, 255))  # Stationary tank for now
-    power_label = font.render("POWER: 15", True, (255, 255, 255))  # Fixed for now
-
-    # Positioning (like gauges)
-    screen.blit(angle_label, (20, HEIGHT - HUD_HEIGHT + 20))
-    screen.blit(ammo_label, (240, HEIGHT - HUD_HEIGHT + 20))
-    screen.blit(cannon_label, (240, HEIGHT - HUD_HEIGHT + 60))
-    screen.blit(fuel_label, (500, HEIGHT - HUD_HEIGHT + 20))
-    screen.blit(power_label, (20, HEIGHT - HUD_HEIGHT + 60))
-
+    draw_hud(screen, tank1, "Player 1", (200, 200, 0))
+    
     pygame.display.flip()
 
 pygame.quit()
