@@ -154,16 +154,11 @@ def apply_explosion_with_wipe(terrain_heights, x_center, y_center, radius=20):
 
     # Step 2: Collapse terrain "above" the removed chunk (falling sand)
     for x in range(max(0, x_center - radius), min(len(terrain_heights), x_center + radius + 1)):
-        # Scan up from the new terrain height to the top of screen
         new_ground_y = bounds.y2 - terrain_heights[x]
         y = new_ground_y - 1
         while y >= 0:
-            # If there's "terrain" floating above (we simulate it with a solid layer), it falls
-            # For this simple simulation, just increment the terrain height to "fill" the hole
             terrain_heights[x] += 1
             y -= 1
-
-            # Stop once we reach the old terrain height (simulate a filled-in collapse)
             if terrain_heights[x] >= HEIGHT:
                 break
 
@@ -214,12 +209,16 @@ def draw_hud(screen, tank, player_name, player_color, hud_height=100):
     font = pygame.font.SysFont("consolas", 22)
 
     # --- Player Indicator ---
-    player_label = font.render(player_name, True, player_color)
+    # Draw player name with a contrasting color
+    font.set_bold(True)
+    player_label = font.render(player_name, True, tuple(255 - c for c in player_color))
+    font.set_bold(False)
+    # Draw a rectangle behind the player name for better visibility in matching tank color
     pygame.draw.rect(screen, player_color, (20, HEIGHT - hud_height + 10, 150, 30))  # Background for player name
     screen.blit(player_label, (25, HEIGHT - hud_height + 15))
 
     # --- Half-Moon Angle Indicator ---
-    angle_center = (240, HEIGHT - hud_height + 70)
+    angle_center = (240, HEIGHT - hud_height + 50)
     angle_radius = 40
     pygame.draw.arc(screen, (255, 255, 255), 
                     (angle_center[0] - angle_radius, angle_center[1] - angle_radius, 
@@ -248,14 +247,39 @@ def draw_hud(screen, tank, player_name, player_color, hud_height=100):
     # --- Odometer-Style Missile Type ---
     missile_label = font.render("MISSILE", True, (255, 255, 255))
     missile_type = font.render("Baby Missile", True, (255, 255, 255))  # Placeholder for actual missile type
-    pygame.draw.rect(screen, (50, 50, 50), (600, HEIGHT - hud_height + 10, 200, 60))  # Background
-    pygame.draw.rect(screen, (200, 200, 200), (600, HEIGHT - hud_height + 10, 200, 60), 3)  # Border
-    screen.blit(missile_label, (610, HEIGHT - hud_height + 15))
-    screen.blit(missile_type, (610, HEIGHT - hud_height + 40))
+    pygame.draw.rect(screen, (50, 50, 50), (555, HEIGHT - hud_height + 10, 200, 60))  # Background
+    pygame.draw.rect(screen, (200, 200, 200), (555, HEIGHT - hud_height + 10, 200, 60), 3)  # Border
+    screen.blit(missile_label, (565, HEIGHT - hud_height + 15))
+    screen.blit(missile_type, (565, HEIGHT - hud_height + 40))
 
-    # --- Power Indicator ---
-    power_label = font.render("POWER:" + str(tank.cannonPower), True, (255, 255, 255))  # Fixed for now
-    screen.blit(power_label, (820, HEIGHT - hud_height + 40))
+    # --- Power Gauge as Shallow Triangle ---
+    power = tank.cannonPower / 100.0  # Normalize from 0 to 1
+    triangle_width = 100  # Full power width
+    triangle_max_height = 20   # Max height on the right side
+    current_width = int(triangle_width * power)
+    current_height = int(triangle_max_height * power)
+
+    # Position
+    triangle_x = 820
+    triangle_y = HEIGHT - hud_height + 40
+
+
+    # Outline of full triangle (max size)
+    base_left = (triangle_x, triangle_y)
+    base_right = (triangle_x + triangle_width, triangle_y)
+    top_right = (triangle_x + triangle_width, triangle_y - triangle_max_height)
+    pygame.draw.polygon(screen, (255, 255, 255), [base_left, base_right, top_right], 2)
+
+    # Filled triangle (grows with power)
+    point1 = (triangle_x, triangle_y)  # bottom-left
+    point2 = (triangle_x + current_width, triangle_y)  # bottom-right
+    point3 = (triangle_x + current_width, triangle_y - current_height)  # top-right
+    pygame.draw.polygon(screen, (255, 255, 0), [point1, point2, point3])
+
+    # Label
+    power_label = font.render("POWER", True, (255, 255, 255))
+    screen.blit(power_label, (triangle_x, triangle_y + 10))
+
 
 # --- Main loop ---
 running = True
@@ -282,7 +306,7 @@ while running:
         tank1.fuel -= 0.001
         tank1.x += .1
         tank1.y = bounds.y2 - tank1.height - terrain.heightMap[int(tank1.x)]
-    if keys[pygame.K_LALT] and tank1.fuel > 0:
+    if keys[pygame.K_RALT] and tank1.fuel > 0:
         tank1.fuel -= 0.001
         tank1.x -= .1
         tank1.y = bounds.y2 - tank1.height - terrain.heightMap[int(tank1.x)]
