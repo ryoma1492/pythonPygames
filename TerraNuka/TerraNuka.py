@@ -5,6 +5,20 @@ from dataclasses import dataclass, field
 from noise import pnoise1
 import random
 
+
+
+@dataclass
+class GameConfig:
+    player_count: int = 2
+    player_colors: list[tuple[int, int, int]] = field(default_factory=lambda: [(255, 255, 0), (0, 255, 255)])
+    terrain_bounds: tuple[int, int] = (10, 540)
+    terrain_seed: int = random.randint(0, 10000)
+    tank_explosion_radius: float = 70
+    tank_health: float = 100
+    tank_fuel_start: float = 0.5
+    tank_strength: float = 15
+
+
 @dataclass
 class Bounds:
     x1: int
@@ -62,15 +76,21 @@ class Tank:
     health: float = 100
     max_health: float = 100
     strength: float = 15
-    fuel: float = .1
-
+    explosionStrength: float = 70
+    fuel: float = .5
+    active: bool = True
+    def bottomCollide(self):
+        return max(terrain.heightMap[int(self.x) + n] for n in range(self.width))
     def aim(self, direction: str):
         """Adjust the aim angle of the tank."""
         if direction == "left":
             self.aimAngle = min(180, self.aimAngle + 1)
         elif direction == "right":
             self.aimAngle = max(0, self.aimAngle - 1)
-
+    def move(self, direction: str):
+        self.fuel -= 0.001
+        self.x += .1 if direction == "Right" else -.1
+        self.y = bounds.y2 - self.height - self.bottomCollide()
     def fire(self, shot_speed: float) -> "Projectile":
         """Fire a projectile from the tank."""
         rad = math.radians(self.aimAngle)
@@ -82,6 +102,9 @@ class Tank:
             vy=-shot_speed * math.sin(rad),
             strength=self.strength
         )
+    def explode(self):
+        Pending_Explosion_Next.append((self.x + self.width // 2, self.y + self.height // 2, self.explosionStrength * (self.fuel+.7), 600, self))
+
     
 @dataclass
 class Projectile:
@@ -107,7 +130,9 @@ FPS = 60
 GRAVITY = 0.5
 Shot_Show_Timer = 0
 Shot_Show_Timer_Max = 333  # in milliseconds
-Pending_Explosion = None  # will store (x, y, radius)
+Pending_Explosion = None  # will store (x, y, radius, timer)
+Pending_Explosion_Next = []  # will store [] of (x, y, radius, timer)
+
 
 # --- Initialize ---
 pygame.init()
@@ -120,8 +145,11 @@ terrain = Terrain()
 terrain.color = (40, 180, 0) # hopefully medium green with a tinge of yellow
 
 # --- Tank state ---
-tank1 = Tank(height=12, width=24, cannonRelX=4, cannonRelY=0, cannonLen=20, x=WIDTH // 4, y=bounds.y2-20, aimAngle=45)
-tank1.y = bounds.y2 - tank1.height - terrain.heightMap[tank1.x]
+tanks = []
+tanks.append(Tank(height=12, width=24, cannonRelX=4, cannonRelY=0, cannonLen=20, x=WIDTH // 4, y=bounds.y2-20, aimAngle=45))
+tanks[0].y = bounds.y2 - tanks[0].height - tanks[0].bottomCollide()
+tanks.append(Tank(height=12, width=24, cannonRelX=4, cannonRelY=0, cannonLen=20, x=WIDTH // 4 + 200, y=bounds.y2-20, aimAngle=45))
+tanks[1].y = bounds.y2 - tanks[1].height - tanks[1].bottomCollide()
 projectile = None  # Will be a dict when active
 
 # --- Helper Functions ---
@@ -190,7 +218,7 @@ def apply_explosion_with_collapse(terrain_heights, x_center, y_center, radius=20
     # Store original heights so we know what's above the crater
     original_heights = terrain_heights[:]
 
-    for dx in range(-radius, radius + 1):
+    for dx in range(-int(radius), int(radius) + 1):
         x = x_center + dx
         if 0 <= x < len(terrain_heights):
             try:
@@ -230,16 +258,17 @@ def apply_explosion_damage(tank, projectile):
         tank.health -= int(damage)
         tank.health = max(0, tank.health)
 
-def apply_gravity_to_tank(tank, terrain_heights, max_height):
+def apply_gravity_to_tank(tank, terrain_heights, max_height, useRight=False):
+    
     terrain_x_start = int(tank.x)
     terrain_x_end = int(tank.x + tank.width)
 
     # Find the highest terrain under this tank's width span
-    max_ground_y = max(max_height - terrain_heights[x] for x in range(terrain_x_start, terrain_x_end))
+    max_ground_y = tank.bottomCollide()
 
     tank_bottom = tank.y + tank.height
-#    if tank_bottom < max_ground_y:
-#        tank.y += 1  # Fall by 1 pixel; increase for faster falling
+    if tank_bottom < (bounds.y2 - max_ground_y):
+        tank.y += 1  # Fall by 1 pixel; increase for faster falling
 
 # --- Draw helper functions ---
 
@@ -366,23 +395,19 @@ while running:
     # --- Input ---
     keys = pygame.key.get_pressed()
     if keys[pygame.K_LEFT]:
-        tank1.aim("left")
+        tank.aim("left")
     if keys[pygame.K_RIGHT]:
-        tank1.aim("right")
+        tank.aim("right")
     if keys[pygame.K_UP]:
-        tank1.cannonPower = min(100, tank1.cannonPower + .1)
+        tank.cannonPower = min(100, tank.cannonPower + .1)
     if keys[pygame.K_DOWN]:
-        tank1.cannonPower = max(0, tank1.cannonPower - .1)
-    if keys[pygame.K_RCTRL] and tank1.fuel > 0:
-        tank1.fuel -= 0.001
-        tank1.x += .1
-        tank1.y = bounds.y2 - tank1.height - terrain.heightMap[int(tank1.x)]
-    if keys[pygame.K_RALT] and tank1.fuel > 0:
-        tank1.fuel -= 0.001
-        tank1.x -= .1
-        tank1.y = bounds.y2 - tank1.height - terrain.heightMap[int(tank1.x)]
+        tank.cannonPower = max(0, tank.cannonPower - .1)
+    if keys[pygame.K_RCTRL] and tank.fuel > 0:
+        tank.move("Right")
+    if keys[pygame.K_RALT] and tank.fuel > 0:
+        tank.move("Left")
     if keys[pygame.K_SPACE] and projectile is None:
-        projectile = tank1.fire(tank1.cannonPower)
+        projectile = tank.fire(tank.cannonPower)
 
     # --- Draw Terrain ---
     terrain_coords = [(0, bounds.y2)]  # Start at bottom-left corner
@@ -393,59 +418,57 @@ while running:
     terrain_coords.append((WIDTH - 1, bounds.y2))  # End at bottom-right
 
     pygame.draw.polygon(screen, terrain.color, terrain_coords)
+    for tank in list(filter(lambda t: t.active == True, tanks)):
+        # apply gravity to tank
+        apply_gravity_to_tank(tank, terrain.heightMap, bounds.y2)
+        # --- Draw tank ---
+        pygame.draw.rect(screen, (200, 200, 0), (tank.x, tank.y, tank.width, tank.height))
+        aim_rad = math.radians(tank.aimAngle)
+        line_len = 30
+        line_end = (
+            tank.x + math.cos(aim_rad) * tank.cannonLen,
+            tank.y - math.sin(aim_rad) * tank.cannonLen
+        )
+        pygame.draw.line(screen, (255, 0, 0), (tank.x,tank.y), line_end, 3)
+        draw_health_bar(screen, tank)
 
-    # apply gravity to tank
-    apply_gravity_to_tank(tank1, terrain.heightMap, bounds.y2)
-    # --- Draw tank ---
-    pygame.draw.rect(screen, (200, 200, 0), (tank1.x, tank1.y, tank1.width, tank1.height))
-    aim_rad = math.radians(tank1.aimAngle)
-    line_len = 30
-    line_end = (
-        tank1.x + math.cos(aim_rad) * tank1.cannonLen,
-        tank1.y - math.sin(aim_rad) * tank1.cannonLen
-    )
-    pygame.draw.line(screen, (255, 0, 0), (tank1.x,tank1.y), line_end, 3)
-    draw_health_bar(screen, tank1)
+        # --- Update projectile ---
+        if projectile:
+            if projectile.x == tank.x and projectile.y == tank.y:
+                projectile.x = line_end[0]
+                projectile.y = line_end[1]
+            projectile.x += projectile.vx
+            projectile.y += projectile.vy
+            projectile.vy += GRAVITY
 
-    # --- Update projectile ---
-    if projectile:
-        if projectile.x == tank1.x and projectile.y == tank1.y:
-            projectile.x = line_end[0]
-            projectile.y = line_end[1]
-        projectile.x += projectile.vx
-        projectile.y += projectile.vy
-        projectile.vy += GRAVITY
+            # Check Collision & Remove if off-screen
+        if projectile:
+            collision = check_projectile_collision(projectile.x, projectile.y, terrain.heightMap, WIDTH, HEIGHT, [tank])
 
-        # Check Collision & Remove if off-screen
-    if projectile:
-        collision = check_projectile_collision(projectile.x, projectile.y, terrain.heightMap, WIDTH, HEIGHT, [tank1])
+            match collision:
+                case CollisionResult.HIT_TERRAIN | CollisionResult.HIT_TANK:
+                    draw_explosion_preview(screen, projectile.x, projectile.y, projectile.strength)
+                    Shot_Show_Timer = 0
+                    Pending_Explosion = (int(projectile.x), int(projectile.y), projectile.strength, Shot_Show_Timer_Max, None)
+                    for tank in tanks:
+                        apply_explosion_damage(tank, projectile)
+                        apply_gravity_to_tank(tank, terrain.heightMap, bounds.y2)
+                        if tank.health <= 0 and tank.active:
+                            tank.explode()
+                    projectile = None
 
-        match collision:
-            case CollisionResult.HIT_TERRAIN:
-                draw_explosion_preview(screen, projectile.x, projectile.y, projectile.strength)
-                Shot_Show_Timer = 0
-                Pending_Explosion = (int(projectile.x), int(projectile.y), projectile.strength)
-                for tank in [tank1]:
-                    apply_explosion_damage(tank, projectile)
-                projectile = None
+                case CollisionResult.MISS_OFFSCREEN:
+                    print("Missed! Flew off screen.")
+                    projectile = None
 
-            case CollisionResult.HIT_TANK:
-                for tank in [tank1]:
-                    apply_explosion_damage(tank, projectile)
-                projectile = None
+                case CollisionResult.MISS_OFFTOP:
+                    pass  # Still flying upward
 
-            case CollisionResult.MISS_OFFSCREEN:
-                print("Missed! Flew off screen.")
-                projectile = None
-
-            case CollisionResult.MISS_OFFTOP:
-                pass  # Still flying upward
-
-            case CollisionResult.NO_COLLISION:
-                pass  # Still in the air
+                case CollisionResult.NO_COLLISION:
+                    pass  # Still in the air
 
     if Pending_Explosion:
-        impact_x, impact_y, radius = Pending_Explosion
+        impact_x, impact_y, radius, anim_timer, origin = Pending_Explosion
 
         # Draw a flashing or translucent circle
         preview_color = (255, 50, 50)
@@ -455,18 +478,20 @@ while running:
 
         Shot_Show_Timer += clock.get_time()
 
-        if Shot_Show_Timer >= Shot_Show_Timer_Max:
+        if Shot_Show_Timer >= anim_timer:
             apply_explosion_with_collapse(terrain.heightMap, impact_x, impact_y, radius)
             Shot_Is_Timing = False
             Shot_Show_Timer = 0
-            Pending_Explosion = None
+            if origin != None:
+                origin.active = False
+            Pending_Explosion = None if len(Pending_Explosion_Next) <= 0 else Pending_Explosion_Next.pop(0)
     
     # --- Draw projectile ---
     if projectile:
         pygame.draw.circle(screen, (255, 255, 255), (int(projectile.x), int(projectile.y)), 4)
 
     # --- Draw HUD ---
-    draw_hud(screen, tank1, "Player 1", (200, 200, 0))
+    draw_hud(screen, tank, "Player 1", (200, 200, 0))
     
     pygame.display.flip()
 
