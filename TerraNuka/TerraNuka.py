@@ -63,7 +63,7 @@ class Terrain:
         return terrain
 
 @dataclass
-class Tank:
+class Tank:    
     height: float
     width: float
     cannonRelX: float
@@ -71,6 +71,9 @@ class Tank:
     cannonLen: float
     x: float
     y: float
+    name: str = "Player"
+    color: tuple[int, int, int] = (200, 200, 0)
+    cannonColor: tuple[int, int, int] = (255, 0, 0)
     cannonPower: float = 30
     aimAngle: float = 45
     health: float = 100
@@ -78,7 +81,7 @@ class Tank:
     strength: float = 15
     explosionStrength: float = 70
     fuel: float = .5
-    active: bool = True
+    active: bool = True    
     def bottomCollide(self):
         return max(terrain.heightMap[int(self.x) + n] for n in range(self.width))
     def aim(self, direction: str):
@@ -122,6 +125,14 @@ class CollisionResult(Enum):
     HIT_TANK = auto()
     NO_COLLISION = auto()
 
+class GameState(Enum):
+    MENU = auto()
+    PLAYING = auto()
+    GAME_OVER = auto()
+
+
+current_state = GameState.MENU
+
 
 # --- Constants ---
 WIDTH, HEIGHT = 1000, 720
@@ -146,9 +157,9 @@ terrain.color = (40, 180, 0) # hopefully medium green with a tinge of yellow
 
 # --- Tank state ---
 tanks = []
-tanks.append(Tank(height=12, width=24, cannonRelX=4, cannonRelY=0, cannonLen=20, x=WIDTH // 4, y=bounds.y2-20, aimAngle=45))
+tanks.append(Tank(height=12, width=24, cannonRelX=4, cannonRelY=0, cannonLen=20, x=WIDTH // 4, y=bounds.y2-20, aimAngle=45, name="Player 1", color=(255, 255, 0), cannonColor=(255, 0, 180)))
 tanks[0].y = bounds.y2 - tanks[0].height - tanks[0].bottomCollide()
-tanks.append(Tank(height=12, width=24, cannonRelX=4, cannonRelY=0, cannonLen=20, x=WIDTH // 4 + 200, y=bounds.y2-20, aimAngle=45))
+tanks.append(Tank(height=12, width=24, cannonRelX=4, cannonRelY=0, cannonLen=20, x=WIDTH // 4 + 200, y=bounds.y2-20, aimAngle=45, name="Player 2", color=(100, 40, 255), cannonColor=(255, 0, 0)))
 tanks[1].y = bounds.y2 - tanks[1].height - tanks[1].bottomCollide()
 projectile = None  # Will be a dict when active
 
@@ -279,7 +290,7 @@ def draw_explosion_preview(screen, x_center, y_center, radius):
     screen.blit(alpha_surface, (0, 0))
     pygame.display.flip()
 
-def draw_hud(screen, tank, player_name, player_color, hud_height=100):
+def draw_hud(screen, tank, hud_height=100):
     """Draw the HUD with a half-moon angle indicator, speedometer-like fuel gauge, and odometer-style missile type."""
     # HUD background
     pygame.draw.rect(screen, (20, 20, 20), (0, HEIGHT - hud_height, WIDTH, hud_height))
@@ -295,10 +306,10 @@ def draw_hud(screen, tank, player_name, player_color, hud_height=100):
     # --- Player Indicator ---
     # Draw player name with a contrasting color
     font.set_bold(True)
-    player_label = font.render(player_name, True, tuple(255 - c for c in player_color))
+    player_label = font.render(tank.name, True, tuple(255 - c for c in tank.color))
     font.set_bold(False)
     # Draw a rectangle behind the player name for better visibility in matching tank color
-    pygame.draw.rect(screen, player_color, (20, HEIGHT - hud_height + 10, 150, 30))  # Background for player name
+    pygame.draw.rect(screen, tank.color, (20, HEIGHT - hud_height + 10, 150, 30))  # Background for player name
     screen.blit(player_label, (25, HEIGHT - hud_height + 15))
 
     # --- Half-Moon Angle Indicator ---
@@ -382,6 +393,7 @@ def draw_health_bar(screen, tank, bar_width=30, bar_height=6):
 
 
 # --- Main loop ---
+active_tank_index = 0  # 0 for player 1, 1 for player 2
 running = True
 while running:
     screen.fill((30, 30, 30))
@@ -392,6 +404,7 @@ while running:
         if event.type == pygame.QUIT:
             running = False
 
+    tank = tanks[active_tank_index]
     # --- Input ---
     keys = pygame.key.get_pressed()
     if keys[pygame.K_LEFT]:
@@ -408,6 +421,7 @@ while running:
         tank.move("Left")
     if keys[pygame.K_SPACE] and projectile is None:
         projectile = tank.fire(tank.cannonPower)
+        active_tank_index = (active_tank_index + 1) % len(tanks)  # Switch to the next tank
 
     # --- Draw Terrain ---
     terrain_coords = [(0, bounds.y2)]  # Start at bottom-left corner
@@ -422,14 +436,14 @@ while running:
         # apply gravity to tank
         apply_gravity_to_tank(tank, terrain.heightMap, bounds.y2)
         # --- Draw tank ---
-        pygame.draw.rect(screen, (200, 200, 0), (tank.x, tank.y, tank.width, tank.height))
+        pygame.draw.rect(screen, tank.color, (tank.x, tank.y, tank.width, tank.height))
         aim_rad = math.radians(tank.aimAngle)
         line_len = 30
         line_end = (
             tank.x + math.cos(aim_rad) * tank.cannonLen,
             tank.y - math.sin(aim_rad) * tank.cannonLen
         )
-        pygame.draw.line(screen, (255, 0, 0), (tank.x,tank.y), line_end, 3)
+        pygame.draw.line(screen, tank.cannonColor, (tank.x,tank.y), line_end, 3)
         draw_health_bar(screen, tank)
 
         # --- Update projectile ---
@@ -491,7 +505,7 @@ while running:
         pygame.draw.circle(screen, (255, 255, 255), (int(projectile.x), int(projectile.y)), 4)
 
     # --- Draw HUD ---
-    draw_hud(screen, tank, "Player 1", (200, 200, 0))
+    draw_hud(screen, tanks[active_tank_index])
     
     pygame.display.flip()
 
