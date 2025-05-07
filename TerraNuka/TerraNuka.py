@@ -501,7 +501,7 @@ class GameConfigUI:
 
         print("Collected Game Config:")
         print(config)
-
+        current_state = GameState.PLAYING
         self.root.destroy()  # Close the UI and proceed to game
 
 # --- Main loop ---
