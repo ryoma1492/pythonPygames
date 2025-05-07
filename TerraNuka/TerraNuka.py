@@ -149,7 +149,7 @@ Pending_Explosion_Next = []  # will store [] of (x, y, radius, timer)
 turn_overlay_timer = 1500  # milliseconds
 turn_overlay_start = pygame.time.get_ticks()
 show_turn_overlay = True
-
+menuconfig = None
 
 # --- Initialize ---
 pygame.init()
@@ -409,6 +409,7 @@ def draw_outlined_text(text, font, x, y, main_color, outline_color=(255, 255, 25
 
 
 class GameConfigUI:
+    global current_state
     def __init__(self, root):
         self.root = root
         self.root.title("Game Setup")
@@ -484,13 +485,14 @@ class GameConfigUI:
             self.player_entries[index][1].config(bg=color)
 
     def collect_config(self):
+        global current_state, menuconfig
         player_data = []
         for idx, (name_entry, _, _) in enumerate(self.player_entries):
             name = name_entry.get()
             color = self.colors[idx]
             player_data.append({"name": name, "color": color})
 
-        config = {
+        menuconfig = {
             "players": player_data,
             "terrain_seed": self.terrain_seed.get(),
             "terrain_min_height": self.min_height_var.get(),
@@ -500,7 +502,7 @@ class GameConfigUI:
         }
 
         print("Collected Game Config:")
-        print(config)
+        print(menuconfig)
         current_state = GameState.PLAYING
         self.root.destroy()  # Close the UI and proceed to game
 
