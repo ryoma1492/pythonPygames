@@ -4,6 +4,9 @@ from enum import Enum, auto
 from dataclasses import dataclass, field
 from noise import pnoise1
 import random
+import tkinter as tk
+from tkinter import colorchooser
+
 
 
 
@@ -143,6 +146,9 @@ Shot_Show_Timer = 0
 Shot_Show_Timer_Max = 333  # in milliseconds
 Pending_Explosion = None  # will store (x, y, radius, timer)
 Pending_Explosion_Next = []  # will store [] of (x, y, radius, timer)
+turn_overlay_timer = 1500  # milliseconds
+turn_overlay_start = pygame.time.get_ticks()
+show_turn_overlay = True
 
 
 # --- Initialize ---
@@ -391,122 +397,261 @@ def draw_health_bar(screen, tank, bar_width=30, bar_height=6):
     # foreground border
     pygame.draw.rect(screen, (180, 180, 180), (x-1, y-1, bar_width+1, bar_height+1), 1)
 
+def draw_outlined_text(text, font, x, y, main_color, outline_color=(255, 255, 255), outline_thickness=2):
+    base = font.render(text, True, main_color)
+    for dx in [-outline_thickness, 0, outline_thickness]:
+        for dy in [-outline_thickness, 0, outline_thickness]:
+            if dx != 0 or dy != 0:
+                outline = font.render(text, True, outline_color)
+                screen.blit(outline, (x + dx, y + dy))
+    screen.blit(base, (x, y))
+
+
+
+class GameConfigUI:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Game Setup")
+
+        self.players_frame = tk.LabelFrame(root, text="Players", padx=10, pady=10)
+        self.players_frame.grid(row=0, column=0, padx=10, pady=10)
+
+        self.num_players_var = tk.IntVar(value=2)
+        tk.Label(self.players_frame, text="Number of Players:").grid(row=0, column=0)
+        self.num_players_menu = tk.OptionMenu(self.players_frame, self.num_players_var, 1, 2, 3, 4, command=self.update_players)
+        self.num_players_menu.grid(row=0, column=1)
+
+        self.player_entries = []
+        self.update_players(2)
+
+        self.terrain_frame = tk.LabelFrame(root, text="Terrain", padx=10, pady=10)
+        self.terrain_frame.grid(row=1, column=0, padx=10, pady=10)
+
+        tk.Label(self.terrain_frame, text="Terrain Seed:").grid(row=0, column=0)
+        self.terrain_seed = tk.Entry(self.terrain_frame)
+        self.terrain_seed.insert(0, "12345")
+        self.terrain_seed.grid(row=0, column=1)
+
+        self.min_height_var = tk.IntVar(value=10)
+        self.max_height_var = tk.IntVar(value=540)
+
+        tk.Label(self.terrain_frame, text="Min Height:").grid(row=1, column=0)
+        tk.Scale(self.terrain_frame, from_=0, to=200, orient='horizontal', variable=self.min_height_var).grid(row=1, column=1)
+
+        tk.Label(self.terrain_frame, text="Max Height:").grid(row=2, column=0)
+        tk.Scale(self.terrain_frame, from_=300, to=700, orient='horizontal', variable=self.max_height_var).grid(row=2, column=1)
+
+        self.settings_frame = tk.LabelFrame(root, text="Gameplay Settings", padx=10, pady=10)
+        self.settings_frame.grid(row=2, column=0, padx=10, pady=10)
+
+        self.fuel_var = tk.DoubleVar(value=0.5)
+        self.health_var = tk.IntVar(value=100)
+
+        tk.Label(self.settings_frame, text="Fuel Amount:").grid(row=0, column=0)
+        tk.Scale(self.settings_frame, from_=0.1, to=1.0, resolution=0.1, orient='horizontal', variable=self.fuel_var).grid(row=0, column=1)
+
+        tk.Label(self.settings_frame, text="Tank Health:").grid(row=1, column=0)
+        tk.Scale(self.settings_frame, from_=10, to=200, orient='horizontal', variable=self.health_var).grid(row=1, column=1)
+
+        self.start_button = tk.Button(root, text="Start Game", command=self.collect_config)
+        self.start_button.grid(row=3, column=0, pady=20)
+
+    def update_players(self, count):
+        for widget in self.player_entries:
+            widget[0].destroy()
+            widget[1].destroy()
+            widget[2].destroy()
+        self.player_entries.clear()
+
+        for i in range(self.num_players_var.get()):
+            name_entry = tk.Entry(self.players_frame)
+            name_entry.insert(0, f"Player {i+1}")
+            name_entry.grid(row=i+1, column=0)
+
+            color_preview = tk.Label(self.players_frame, text="    ", bg="gray")
+            color_preview.grid(row=i+1, column=1)
+            color_button = tk.Button(self.players_frame, text="Choose Color", command=lambda i=i: self.choose_color(i))
+            color_button.grid(row=i+1, column=2)
+
+            self.player_entries.append((name_entry, color_preview, color_button))
+
+        self.colors = ["#808080"] * self.num_players_var.get()  # Default grey
+
+    def choose_color(self, index):
+        color = colorchooser.askcolor()[1]
+        if color:
+            self.colors[index] = color
+            self.player_entries[index][1].config(bg=color)
+
+    def collect_config(self):
+        player_data = []
+        for idx, (name_entry, _, _) in enumerate(self.player_entries):
+            name = name_entry.get()
+            color = self.colors[idx]
+            player_data.append({"name": name, "color": color})
+
+        config = {
+            "players": player_data,
+            "terrain_seed": self.terrain_seed.get(),
+            "terrain_min_height": self.min_height_var.get(),
+            "terrain_max_height": self.max_height_var.get(),
+            "fuel": self.fuel_var.get(),
+            "health": self.health_var.get()
+        }
+
+        print("Collected Game Config:")
+        print(config)
+
+        self.root.destroy()  # Close the UI and proceed to game
 
 # --- Main loop ---
 active_tank_index = 0  # 0 for player 1, 1 for player 2
 running = True
 while running:
-    screen.fill((30, 30, 30))
-    dt = clock.tick(FPS) / 1000
 
-    # --- Events ---
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+    # Run the config UI
+    if current_state == GameState.MENU:
+        root = tk.Tk()
+        app = GameConfigUI(root)
+        root.mainloop()
+    elif current_state == GameState.PLAYING:
 
-    tank = tanks[active_tank_index]
-    # --- Input ---
-    keys = pygame.key.get_pressed()
-    if keys[pygame.K_LEFT]:
-        tank.aim("left")
-    if keys[pygame.K_RIGHT]:
-        tank.aim("right")
-    if keys[pygame.K_UP]:
-        tank.cannonPower = min(100, tank.cannonPower + .1)
-    if keys[pygame.K_DOWN]:
-        tank.cannonPower = max(0, tank.cannonPower - .1)
-    if keys[pygame.K_RCTRL] and tank.fuel > 0:
-        tank.move("Right")
-    if keys[pygame.K_RALT] and tank.fuel > 0:
-        tank.move("Left")
-    if keys[pygame.K_SPACE] and projectile is None:
-        projectile = tank.fire(tank.cannonPower)
-        active_tank_index = (active_tank_index + 1) % len(tanks)  # Switch to the next tank
+        screen.fill((30, 30, 30))
+        dt = clock.tick(FPS) / 1000
 
-    # --- Draw Terrain ---
-    terrain_coords = [(0, bounds.y2)]  # Start at bottom-left corner
+        # --- Events ---
+        events = pygame.event.get()
+        for event in events:
+            if event.type == pygame.QUIT:
+                running = False
 
-    for x in range(WIDTH):
-        terrain_coords.append((x, bounds.y2 - terrain.heightMap[x]))
+        tank = tanks[active_tank_index]
+        # --- Input ---
+        #print(list(filter(lambda c: c == True, pygame.key.get_pressed())))
+        for event in events:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE and projectile is None:
+                    print(active_tank_index)
+                    projectile = tank.fire(tank.cannonPower)
 
-    terrain_coords.append((WIDTH - 1, bounds.y2))  # End at bottom-right
+        # For smooth continuous controls (like movement or aim), use key.get_pressed()
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_LEFT]:
+            tank.aim("left")
+        if keys[pygame.K_RIGHT]:
+            tank.aim("right")
+        if keys[pygame.K_UP]:
+            tank.cannonPower = min(100, tank.cannonPower + .1)
+        if keys[pygame.K_DOWN]:
+            tank.cannonPower = max(0, tank.cannonPower - .1)
+        if keys[pygame.K_RCTRL] and tank.fuel > 0:
+            tank.move("Right")
+        if keys[pygame.K_RALT] and tank.fuel > 0:
+            tank.move("Left")
+        # --- Draw Terrain ---
+        terrain_coords = [(0, bounds.y2)]  # Start at bottom-left corner
 
-    pygame.draw.polygon(screen, terrain.color, terrain_coords)
-    for tank in list(filter(lambda t: t.active == True, tanks)):
-        # apply gravity to tank
-        apply_gravity_to_tank(tank, terrain.heightMap, bounds.y2)
-        # --- Draw tank ---
-        pygame.draw.rect(screen, tank.color, (tank.x, tank.y, tank.width, tank.height))
-        aim_rad = math.radians(tank.aimAngle)
-        line_len = 30
-        line_end = (
-            tank.x + math.cos(aim_rad) * tank.cannonLen,
-            tank.y - math.sin(aim_rad) * tank.cannonLen
-        )
-        pygame.draw.line(screen, tank.cannonColor, (tank.x,tank.y), line_end, 3)
-        draw_health_bar(screen, tank)
+        for x in range(WIDTH):
+            terrain_coords.append((x, bounds.y2 - terrain.heightMap[x]))
 
-        # --- Update projectile ---
-        if projectile:
-            if projectile.x == tank.x and projectile.y == tank.y:
-                projectile.x = line_end[0]
-                projectile.y = line_end[1]
-            projectile.x += projectile.vx
-            projectile.y += projectile.vy
-            projectile.vy += GRAVITY
+        terrain_coords.append((WIDTH - 1, bounds.y2))  # End at bottom-right
+
+        pygame.draw.polygon(screen, terrain.color, terrain_coords)
+        for tank in list(filter(lambda t: t.active == True, tanks)):
+            # apply gravity to tank
+            apply_gravity_to_tank(tank, terrain.heightMap, bounds.y2)
+            # --- Draw tank ---
+            pygame.draw.rect(screen, tank.color, (tank.x, tank.y, tank.width, tank.height))
+            aim_rad = math.radians(tank.aimAngle)
+            line_len = 30
+            line_end = (
+                tank.x + math.cos(aim_rad) * tank.cannonLen,
+                tank.y - math.sin(aim_rad) * tank.cannonLen
+            )
+            pygame.draw.line(screen, tank.cannonColor, (tank.x,tank.y), line_end, 3)
+            draw_health_bar(screen, tank)
+
+            # --- Update projectile ---
+            if projectile:
+                if projectile.x == tank.x and projectile.y == tank.y:
+                    projectile.x = line_end[0]
+                    projectile.y = line_end[1]
+                projectile.x += projectile.vx
+                projectile.y += projectile.vy
+                projectile.vy += GRAVITY
+            def nextTurn():
+                global active_tank_index, show_turn_overlay, turn_overlay_start
+                turn_overlay_start = pygame.time.get_ticks()
+                active_tank_index = (active_tank_index + 1) % len(tanks)  # Switch to the next tank
+                show_turn_overlay = True
 
             # Check Collision & Remove if off-screen
+            if projectile:
+                collision = check_projectile_collision(projectile.x, projectile.y, terrain.heightMap, WIDTH, HEIGHT, [tank])
+
+                match collision:
+                    case CollisionResult.HIT_TERRAIN | CollisionResult.HIT_TANK:
+                        draw_explosion_preview(screen, projectile.x, projectile.y, projectile.strength)
+                        Shot_Show_Timer = 0
+                        Pending_Explosion = (int(projectile.x), int(projectile.y), projectile.strength, Shot_Show_Timer_Max, None)
+                        for tank in tanks:
+                            apply_explosion_damage(tank, projectile)
+                            apply_gravity_to_tank(tank, terrain.heightMap, bounds.y2)
+                            if tank.health <= 0 and tank.active:
+                                tank.explode()
+                        projectile = None
+                        nextTurn()
+
+                    case CollisionResult.MISS_OFFSCREEN:
+                        print("Missed! Flew off screen.")
+                        projectile = None
+                        nextTurn()
+
+                    case CollisionResult.MISS_OFFTOP:
+                        pass  # Still flying upward
+
+                    case CollisionResult.NO_COLLISION:
+                        pass  # Still in the air
+
+
+        if Pending_Explosion:
+            impact_x, impact_y, radius, anim_timer, origin = Pending_Explosion
+
+            # Draw a flashing or translucent circle
+            preview_color = (255, 50, 50)
+            alpha_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            pygame.draw.circle(alpha_surface, (*preview_color, 128), (impact_x, impact_y), radius)
+            screen.blit(alpha_surface, (0, 0))
+
+            Shot_Show_Timer += clock.get_time()
+
+            if Shot_Show_Timer >= anim_timer:
+                apply_explosion_with_collapse(terrain.heightMap, impact_x, impact_y, radius)
+                Shot_Is_Timing = False
+                Shot_Show_Timer = 0
+                if origin != None:
+                    origin.active = False
+                Pending_Explosion = None if len(Pending_Explosion_Next) <= 0 else Pending_Explosion_Next.pop(0)
+        
+        # --- Draw projectile ---
         if projectile:
-            collision = check_projectile_collision(projectile.x, projectile.y, terrain.heightMap, WIDTH, HEIGHT, [tank])
+            pygame.draw.circle(screen, (255, 255, 255), (int(projectile.x), int(projectile.y)), 4)
 
-            match collision:
-                case CollisionResult.HIT_TERRAIN | CollisionResult.HIT_TANK:
-                    draw_explosion_preview(screen, projectile.x, projectile.y, projectile.strength)
-                    Shot_Show_Timer = 0
-                    Pending_Explosion = (int(projectile.x), int(projectile.y), projectile.strength, Shot_Show_Timer_Max, None)
-                    for tank in tanks:
-                        apply_explosion_damage(tank, projectile)
-                        apply_gravity_to_tank(tank, terrain.heightMap, bounds.y2)
-                        if tank.health <= 0 and tank.active:
-                            tank.explode()
-                    projectile = None
+        # --- Draw HUD ---
+        draw_hud(screen, tanks[active_tank_index])
+        
+        if show_turn_overlay:
+            elapsed = pygame.time.get_ticks() - turn_overlay_start
+            if elapsed > turn_overlay_timer:
+                show_turn_overlay = False
+            else:
+                fade_factor = max(0, 255 - int((elapsed / turn_overlay_timer) * 255))
+                overlay_color = (*tanks[active_tank_index].color, fade_factor)
+                font_overlay = pygame.font.SysFont(None, 48)
+                text_surface = font_overlay.render(tanks[active_tank_index].name, True, overlay_color)
+                draw_outlined_text(tanks[active_tank_index].name, font_overlay, WIDTH // 2 - 60, 60, overlay_color)
 
-                case CollisionResult.MISS_OFFSCREEN:
-                    print("Missed! Flew off screen.")
-                    projectile = None
 
-                case CollisionResult.MISS_OFFTOP:
-                    pass  # Still flying upward
-
-                case CollisionResult.NO_COLLISION:
-                    pass  # Still in the air
-
-    if Pending_Explosion:
-        impact_x, impact_y, radius, anim_timer, origin = Pending_Explosion
-
-        # Draw a flashing or translucent circle
-        preview_color = (255, 50, 50)
-        alpha_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        pygame.draw.circle(alpha_surface, (*preview_color, 128), (impact_x, impact_y), radius)
-        screen.blit(alpha_surface, (0, 0))
-
-        Shot_Show_Timer += clock.get_time()
-
-        if Shot_Show_Timer >= anim_timer:
-            apply_explosion_with_collapse(terrain.heightMap, impact_x, impact_y, radius)
-            Shot_Is_Timing = False
-            Shot_Show_Timer = 0
-            if origin != None:
-                origin.active = False
-            Pending_Explosion = None if len(Pending_Explosion_Next) <= 0 else Pending_Explosion_Next.pop(0)
-    
-    # --- Draw projectile ---
-    if projectile:
-        pygame.draw.circle(screen, (255, 255, 255), (int(projectile.x), int(projectile.y)), 4)
-
-    # --- Draw HUD ---
-    draw_hud(screen, tanks[active_tank_index])
-    
-    pygame.display.flip()
+        pygame.display.flip()
 
 pygame.quit()
