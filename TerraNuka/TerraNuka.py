@@ -56,7 +56,7 @@ class Terrain:
 
         # Step 1: Derive phase offset and octave count from scrambled seed
         offset = ((scrambled // 1000) % 100) / 10.0         # 0.0 to 9.9
-        octaves = 3 + (scrambled % 6)                       # 3 to 8 octaves
+        octaves = 4 + (scrambled % 6)                       # 4 to 9 octaves
 
         # Step 2: Collect raw noise values
         tempTerrain = []
@@ -328,7 +328,12 @@ def draw_hud(screen, tank, hud_height=100):
     pygame.draw.rect(screen, (200, 200, 200), (0, 0, 5, HEIGHT))  # Left border
     pygame.draw.rect(screen, (200, 200, 200), (WIDTH - 5, 0, 5, HEIGHT))  # Right border
 
-    font = pygame.font.SysFont("consolas", 22)
+    # Adjust font size based on name length (longer names = smaller font)
+    base_font_size = 22
+    max_name_length = 20  # Adjust this threshold as needed
+    font_size = max(10, base_font_size - max(0, len(tank.name) - 8))
+
+    font = pygame.font.SysFont("consolas", font_size)
 
     # --- Player Indicator ---
     # Draw player name with a contrasting color
@@ -338,6 +343,8 @@ def draw_hud(screen, tank, hud_height=100):
     # Draw a rectangle behind the player name for better visibility in matching tank color
     pygame.draw.rect(screen, tank.color, (20, HEIGHT - hud_height + 10, 150, 30))  # Background for player name
     screen.blit(player_label, (25, HEIGHT - hud_height + 15))
+
+    font = pygame.font.SysFont("consolas", 22)
 
     # --- Half-Moon Angle Indicator ---
     angle_center = (240, HEIGHT - hud_height + 50)
@@ -450,9 +457,11 @@ class GameConfigUI:
         self.terrain_frame.grid(row=1, column=0, padx=10, pady=10)
 
         tk.Label(self.terrain_frame, text="Terrain Seed:").grid(row=0, column=0)
-        self.terrain_seed = tk.Entry(self.terrain_frame)
-        self.terrain_seed.insert(0, str(random.randint(0, 10000)))
+        vcmd = (self.root.register(self.is_digit_input), '%P')
+        self.terrain_seed = tk.Entry(self.terrain_frame, validate="key", validatecommand=vcmd)
+        self.terrain_seed.insert(0, str(random.randint(0, 100000)))
         self.terrain_seed.grid(row=0, column=1)
+        self.terrain_seed.bind("<FocusOut>", self.clamp_seed)
 
         self.min_height_var = tk.IntVar(value=10)
         self.max_height_var = tk.IntVar(value=540)
@@ -477,6 +486,24 @@ class GameConfigUI:
 
         self.start_button = tk.Button(root, text="Start Game", command=self.collect_config)
         self.start_button.grid(row=3, column=0, pady=20)
+    
+    def is_digit_input(self, value):
+        return value.isdigit() or value == ""
+
+    def clamp_seed(self, *_):
+        try:
+            val_str = self.terrain_seed.get().strip()
+            if val_str == "":
+                val = random.randint(0, 100000)
+            else:
+                val = int(val_str)
+            clamped = max(0, min(100000, val))
+            self.terrain_seed.delete(0, tk.END)
+            self.terrain_seed.insert(0, str(clamped))
+        except ValueError:
+            self.terrain_seed.delete(0, tk.END)
+            self.terrain_seed.insert(0, str(random.randint(0, 100000)))
+
     def generate_random_name(self, index=None):
         if index is not None:
             name_entry = self.player_entries[index][0]
@@ -522,7 +549,7 @@ class GameConfigUI:
             color_button = tk.Button(self.players_frame, text="Choose Color", command=lambda i=i: self.choose_color(i))
             color_button.grid(row=i+1, column=3)
 
-            self.player_entries.append((name_entry, color_preview, color_button, random_btn))
+            self.player_entries.append((name_entry))
 
     def choose_color(self, index):
         color = colorchooser.askcolor()[1]
@@ -533,13 +560,10 @@ class GameConfigUI:
     def collect_config(self):
         global current_state, menuconfig
         player_data = []
-        for idx, (name_entry, _, _) in enumerate(self.player_entries):
+        for idx, name_entry in enumerate(self.player_entries):
             name = name_entry.get()
-            # convert hex color to RGB tuple
-            if self.colors[idx].startswith("#"):
-                color = tuple(int(self.colors[idx][i:i+2], 16) for i in (1, 3, 5))
-            else:   
-                color = tuple(int(self.colors[idx][i:i+2]) for i in (1, 3, 5))
+            hex_color = self.colors[idx]
+            color = tuple(int(hex_color[i:i+2], 16) for i in (1, 3, 5))
             player_data.append({"name": name, "color": color})
 
         menuconfig = {
@@ -754,11 +778,11 @@ while running:
                     turn_overlay_timer = 150000  # milliseconds
                     font_overlay = pygame.font.SysFont(None, 64)
                     text_surface = font_overlay.render(f"{tanks[active_tank_index].name} wins!", True, overlay_color)
-                    draw_outlined_text(f"{tanks[active_tank_index].name} wins!", font_overlay, WIDTH // 2 - 60, 60, overlay_color)
+                    draw_outlined_text(f"{tanks[active_tank_index].name} wins!", font_overlay, WIDTH // 3 - 40, 60, overlay_color)
                 else:
                     font_overlay = pygame.font.SysFont(None, 48)
                     text_surface = font_overlay.render(tanks[active_tank_index].name, True, overlay_color)
-                draw_outlined_text(tanks[active_tank_index].name, font_overlay, WIDTH // 2 - 60, 60, overlay_color)
+                draw_outlined_text(tanks[active_tank_index].name, font_overlay, WIDTH // 2 - 100, 60, overlay_color)
 
 
         pygame.display.flip()
