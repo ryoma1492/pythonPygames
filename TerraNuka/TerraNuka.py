@@ -144,9 +144,18 @@ class GameState(Enum):
     PLAYING = auto()
     GAME_OVER = auto()
 
-
 current_state = GameState.MENU
 
+adjectives = [
+    "Wiggly", "Brave", "Soggy", "Tiny", "Curious", "Nervous", 
+    "Fluffy", "Grumpy", "Sneaky", "Bouncy", "Moist", "Silly", 
+    "Sleepy", "Spicy", "Dry", "Bold","Crazy","Chubby", "Loud"
+]
+animals = [
+    "Penguin", "Tiger", "Duck", "Sloth", "Panther", "Elephant", 
+    "Giraffe", "Fox", "Moose", "Meerkat", "Panda", "Llama",
+    "Koala", "Turtle", "Otter", "Hedgehog", "Raccoon"
+]
 
 # --- Constants ---
 WIDTH, HEIGHT = 1000, 720
@@ -299,8 +308,8 @@ def apply_gravity_to_tank(tank, terrain_heights, max_height, useRight=False):
     if tank_bottom < (bounds.y2 - max_ground_y):
         tank.y += 1  # Fall by 1 pixel; increase for faster falling
 
-# --- Draw helper functions ---
 
+# --- Draw helper functions ---
 def draw_explosion_preview(screen, x_center, y_center, radius):
     preview_color = (255, 50, 50)
     alpha_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
@@ -431,7 +440,7 @@ class GameConfigUI:
 
         self.num_players_var = tk.IntVar(value=2)
         tk.Label(self.players_frame, text="Number of Players:").grid(row=0, column=0)
-        self.num_players_menu = tk.OptionMenu(self.players_frame, self.num_players_var, 1, 2, 3, 4, command=self.update_players)
+        self.num_players_menu = tk.OptionMenu(self.players_frame, self.num_players_var, 2, 3, 4, 5, command=self.update_players)
         self.num_players_menu.grid(row=0, column=1)
 
         self.player_entries = []
@@ -468,27 +477,52 @@ class GameConfigUI:
 
         self.start_button = tk.Button(root, text="Start Game", command=self.collect_config)
         self.start_button.grid(row=3, column=0, pady=20)
-
+    def generate_random_name(self, index=None):
+        if index is not None:
+            name_entry = self.player_entries[index][0]
+            name_entry.delete(0, tk.END)
+            name_entry.insert(0, f"The {random.choice(adjectives)} {random.choice(animals)}")
+        else:
+            return f"The {random.choice(adjectives)} {random.choice(animals)}"
     def update_players(self, count):
+        # Destroy previous widgets
         for widget in self.player_entries:
-            widget[0].destroy()
-            widget[1].destroy()
-            widget[2].destroy()
+            widget[0].destroy()  # Entry
+            widget[1].destroy()  # Color preview
+            widget[2].destroy()  # Color button
+            widget[3].destroy()  # Random name button
         self.player_entries.clear()
 
+        # Initialize color list
+        self.colors = []
+
+        # Define some vivid default colors
+        color_options = [
+            "#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF", 
+            "#00FFFF", "#88FF00", "#FF8800", "#0088FF", "#8888FF"
+        ]
+
         for i in range(self.num_players_var.get()):
+            # Entry with random name
             name_entry = tk.Entry(self.players_frame)
-            name_entry.insert(0, f"Player {i+1}")
+            name_entry.insert(0, self.generate_random_name())
             name_entry.grid(row=i+1, column=0)
 
-            color_preview = tk.Label(self.players_frame, text="    ", bg="gray")
-            color_preview.grid(row=i+1, column=1)
+            # 🎲 Random name button
+            random_btn = tk.Button(self.players_frame, text="🎲", command=lambda i=i: self.generate_random_name(i))
+            random_btn.grid(row=i+1, column=1)
+
+            # Random color assignment
+            color = random.choice(color_options)
+            self.colors.append(color)
+
+            # Color preview and chooser
+            color_preview = tk.Label(self.players_frame, text="    ", bg=color)
+            color_preview.grid(row=i+1, column=2)
             color_button = tk.Button(self.players_frame, text="Choose Color", command=lambda i=i: self.choose_color(i))
-            color_button.grid(row=i+1, column=2)
+            color_button.grid(row=i+1, column=3)
 
-            self.player_entries.append((name_entry, color_preview, color_button))
-
-        self.colors = ["#808080"] * self.num_players_var.get()  # Default grey
+            self.player_entries.append((name_entry, color_preview, color_button, random_btn))
 
     def choose_color(self, index):
         color = colorchooser.askcolor()[1]
