@@ -538,7 +538,7 @@ class GameConfigUI:
             name_entry.grid(row=i+1, column=0)
 
             # Random name button
-            random_btn = tk.Button(self.players_frame, text="🎲", command=lambda i=i: self.randomize_name(i))
+            random_btn = tk.Button(self.players_frame, text="🎲", command=lambda i=i: self.generate_random_name(i))
             random_btn.grid(row=i+1, column=1)
 
             # Random color preview
@@ -708,8 +708,16 @@ while running:
                 if projectile.x == tank.x and projectile.y == tank.y:
                     projectile.x = line_end[0]
                     projectile.y = line_end[1]
-                projectile.x += projectile.vx
-                projectile.y += projectile.vy
+                # Number of steps proportional to speed
+                steps = int(max(abs(projectile.vx), abs(projectile.vy), 1))
+
+                for step in range(steps):
+                    # Stepwise movement
+                    projectile.x += projectile.vx / steps
+                    projectile.y += projectile.vy / steps
+
+                    # Check collision at intermediate position
+                    result = check_projectile_collision(projectile.x, projectile.y, terrain.heightMap, WIDTH, HEIGHT, tanks)
                 projectile.vy += GRAVITY
             def nextTurn():
                 global active_tank_index, show_turn_overlay, turn_overlay_start
@@ -801,7 +809,8 @@ while running:
                 #init the menu again
                 tanks = []
                 terrain = Terrain()
-                current_state = GameState.Menu
+                config_loaded = False
+                current_state = GameState.MENU
 
 
         pygame.display.flip()
