@@ -171,6 +171,9 @@ turn_overlay_start = pygame.time.get_ticks()
 show_turn_overlay = True
 menuconfig = None
 config_loaded = False
+show_game_over_overlay = False
+game_over_overlay_start = 0
+
 
 # --- Initialize ---
 pygame.init()
@@ -450,7 +453,10 @@ class GameConfigUI:
         self.num_players_menu = tk.OptionMenu(self.players_frame, self.num_players_var, 2, 3, 4, 5, command=self.update_players)
         self.num_players_menu.grid(row=0, column=1)
 
-        self.player_entries = []
+        self.player_names = []
+        self.player_widgets = []  # Holds all widgets per player for cleanup
+        self.colors = []          # Holds player colors by index
+
         self.update_players(2)
 
         self.terrain_frame = tk.LabelFrame(root, text="Terrain", padx=10, pady=10)
@@ -506,61 +512,61 @@ class GameConfigUI:
 
     def generate_random_name(self, index=None):
         if index is not None:
-            name_entry = self.player_entries[index][0]
+            name_entry = self.player_names[index]
             name_entry.delete(0, tk.END)
             name_entry.insert(0, f"The {random.choice(adjectives)} {random.choice(animals)}")
         else:
             return f"The {random.choice(adjectives)} {random.choice(animals)}"
     def update_players(self, count):
-        # Destroy previous widgets
-        for widget in self.player_entries:
-            widget[0].destroy()  # Entry
-            widget[1].destroy()  # Color preview
-            widget[2].destroy()  # Color button
-            widget[3].destroy()  # Random name button
-        self.player_entries.clear()
+        # Clean up old widgets
+        for widget_group in self.player_widgets:
+            for widget in widget_group:
+                widget.destroy()
+        self.player_widgets.clear()
+        self.player_names.clear()
+        self.colors.clear()
 
-        # Initialize color list
-        self.colors = []
-
-        # Define some vivid default colors
         color_options = [
             "#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF", 
             "#00FFFF", "#88FF00", "#FF8800", "#0088FF", "#8888FF"
         ]
 
         for i in range(self.num_players_var.get()):
-            # Entry with random name
+            # Name Entry
             name_entry = tk.Entry(self.players_frame)
             name_entry.insert(0, self.generate_random_name())
             name_entry.grid(row=i+1, column=0)
 
-            # 🎲 Random name button
-            random_btn = tk.Button(self.players_frame, text="🎲", command=lambda i=i: self.generate_random_name(i))
+            # Random name button
+            random_btn = tk.Button(self.players_frame, text="🎲", command=lambda i=i: self.randomize_name(i))
             random_btn.grid(row=i+1, column=1)
 
-            # Random color assignment
+            # Random color preview
             color = random.choice(color_options)
             self.colors.append(color)
-
-            # Color preview and chooser
             color_preview = tk.Label(self.players_frame, text="    ", bg=color)
             color_preview.grid(row=i+1, column=2)
+
+            # Color chooser button
             color_button = tk.Button(self.players_frame, text="Choose Color", command=lambda i=i: self.choose_color(i))
             color_button.grid(row=i+1, column=3)
 
-            self.player_entries.append((name_entry))
+            # Store only the name entry for config
+            self.player_names.append(name_entry)
+
+            # Store all widgets for cleanup
+            self.player_widgets.append((name_entry, random_btn, color_preview, color_button))
 
     def choose_color(self, index):
         color = colorchooser.askcolor()[1]
         if color:
             self.colors[index] = color
-            self.player_entries[index][1].config(bg=color)
+            self.player_names[index][1].config(bg=color)
 
     def collect_config(self):
         global current_state, menuconfig
         player_data = []
-        for idx, name_entry in enumerate(self.player_entries):
+        for idx, name_entry in enumerate(self.player_names):
             name = name_entry.get()
             hex_color = self.colors[idx]
             color = tuple(int(hex_color[i:i+2], 16) for i in (1, 3, 5))
@@ -765,7 +771,12 @@ while running:
 
         # --- Draw HUD ---
         draw_hud(screen, tanks[active_tank_index])
-        
+        # Delay game over overlay until the turn overlay has finished
+        if game_over and not show_turn_overlay and not show_game_over_overlay:
+            show_game_over_overlay = True
+            game_over_overlay_start = pygame.time.get_ticks()
+
+        # Regular Turn Overlay
         if show_turn_overlay:
             elapsed = pygame.time.get_ticks() - turn_overlay_start
             if elapsed > turn_overlay_timer:
@@ -773,16 +784,24 @@ while running:
             else:
                 fade_factor = max(0, 255 - int((elapsed / turn_overlay_timer) * 255))
                 overlay_color = (*tanks[active_tank_index].color, fade_factor)
-                # check Game Over to add " wins!" to display text"
-                if game_over:
-                    turn_overlay_timer = 150000  # milliseconds
-                    font_overlay = pygame.font.SysFont(None, 64)
-                    text_surface = font_overlay.render(f"{tanks[active_tank_index].name} wins!", True, overlay_color)
-                    draw_outlined_text(f"{tanks[active_tank_index].name} wins!", font_overlay, WIDTH // 3 - 40, 60, overlay_color)
-                else:
-                    font_overlay = pygame.font.SysFont(None, 48)
-                    text_surface = font_overlay.render(tanks[active_tank_index].name, True, overlay_color)
+                font_overlay = pygame.font.SysFont(None, 48)
                 draw_outlined_text(tanks[active_tank_index].name, font_overlay, WIDTH // 2 - 100, 60, overlay_color)
+
+        # Game Over Overlay (after turn overlay ends)
+        if show_game_over_overlay:
+            elapsed = pygame.time.get_ticks() - game_over_overlay_start
+            fade_factor = max(0, 255 - int((elapsed / 5000) * 255))  # 5 second fade
+            overlay_color = (*tanks[active_tank_index].color, fade_factor)
+            font_overlay = pygame.font.SysFont(None, 64)
+            draw_outlined_text(f"{tanks[active_tank_index].name} wins!", font_overlay, WIDTH // 3 - 40, 60, overlay_color)
+
+            if elapsed > 5000:
+                show_game_over_overlay = False  # Optional: turn off or restart game here
+                # Reset game state or exit
+                #init the menu again
+                tanks = []
+                terrain = Terrain()
+                current_state = GameState.Menu
 
 
         pygame.display.flip()
