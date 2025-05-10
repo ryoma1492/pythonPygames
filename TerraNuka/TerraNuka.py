@@ -69,11 +69,11 @@ class Terrain:
 class Tank:    
     height: float
     width: float
-    cannonRelX: float
-    cannonRelY: float
-    cannonLen: float
     x: float
-    y: float
+    y: float = field(init=False)
+    cannonRelX: float = 0
+    cannonRelY: float = 0
+    cannonLen: float = 20
     name: str = "Player"
     color: tuple[int, int, int] = (200, 200, 0)
     cannonColor: tuple[int, int, int] = (255, 0, 0)
@@ -163,9 +163,9 @@ terrain.color = (40, 180, 0) # hopefully medium green with a tinge of yellow
 
 # --- Tank state ---
 tanks = []
-tanks.append(Tank(height=12, width=24, cannonRelX=4, cannonRelY=0, cannonLen=20, x=WIDTH // 4, y=bounds.y2-20, aimAngle=45, name="Player 1", color=(255, 255, 0), cannonColor=(255, 0, 180)))
+tanks.append(Tank(height=12, width=24, cannonRelX=4, cannonRelY=0, cannonLen=20, x=WIDTH // 4, aimAngle=45, name="Player 1", color=(255, 255, 0), cannonColor=(255, 0, 180)))
 tanks[0].y = bounds.y2 - tanks[0].height - tanks[0].bottomCollide()
-tanks.append(Tank(height=12, width=24, cannonRelX=4, cannonRelY=0, cannonLen=20, x=WIDTH // 4 + 200, y=bounds.y2-20, aimAngle=45, name="Player 2", color=(100, 40, 255), cannonColor=(255, 0, 0)))
+tanks.append(Tank(height=12, width=24, cannonRelX=4, cannonRelY=0, cannonLen=20, x=WIDTH // 4 + 200, aimAngle=45, name="Player 2", color=(100, 40, 255), cannonColor=(255, 0, 0)))
 tanks[1].y = bounds.y2 - tanks[1].height - tanks[1].bottomCollide()
 projectile = None  # Will be a dict when active
 
@@ -489,7 +489,11 @@ class GameConfigUI:
         player_data = []
         for idx, (name_entry, _, _) in enumerate(self.player_entries):
             name = name_entry.get()
-            color = self.colors[idx]
+            # convert hex color to RGB tuple
+            if self.colors[idx].startswith("#"):
+                color = tuple(int(self.colors[idx][i:i+2], 16) for i in (1, 3, 5))
+            else:   
+                color = tuple(int(self.colors[idx][i:i+2]) for i in (1, 3, 5))
             player_data.append({"name": name, "color": color})
 
         menuconfig = {
@@ -506,6 +510,31 @@ class GameConfigUI:
         current_state = GameState.PLAYING
         self.root.destroy()  # Close the UI and proceed to game
 
+def load_game_config():
+    global tanks, terrain
+    # Load the game config from the menu
+    if menuconfig:
+        tanks = []
+        player_data = menuconfig["players"]
+        terrain.seed = int(menuconfig["terrain_seed"])
+        terrain.min_height = int(menuconfig["terrain_min_height"])
+        terrain.max_height = int(menuconfig["terrain_max_height"])
+        terrain.heightMap = terrain.generate_terrain()
+
+        for i, player in enumerate(player_data):
+            menuTank = Tank(
+                height=12,
+                width=24,
+                name = player["name"],
+                color = player["color"],
+                fuel= float(menuconfig["fuel"]),
+                health= float(menuconfig["health"]),
+                x = (WIDTH // (len(player_data)+1)) * (i + 1),                
+            )
+            menuTank.cannonColor = (255 - menuTank.color[0], 255 - menuTank.color[1], 255 - menuTank.color[2])
+            menuTank.y = bounds.y2 - menuTank.height - menuTank.bottomCollide()
+            tanks.append(menuTank)
+
 # --- Main loop ---
 active_tank_index = 0  # 0 for player 1, 1 for player 2
 running = True
@@ -517,6 +546,9 @@ while running:
         app = GameConfigUI(root)
         root.mainloop()
     elif current_state == GameState.PLAYING:
+
+        # Initialize tanks based on the collected config
+        load_game_config()
 
         screen.fill((30, 30, 30))
         dt = clock.tick(FPS) / 1000
