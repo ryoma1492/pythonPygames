@@ -33,7 +33,7 @@ class Bounds:
 class Terrain:
     heightMap: list[int] = field(init=False)
     color: tuple[int, int, int] = field(init=False)
-    seed: int = random.randint(0, 10000)
+    seed: int = random.randint(0, 100000)
     max_height: int = 540
     min_height: int = 10
     scale=360
@@ -41,22 +41,34 @@ class Terrain:
     def __post_init__(self):
         self.heightMap = self.generate_terrain()
         self.color = (40, 180, 0)  # Default color
-    def generate_terrain(self):
-        if self.seed is None:
-            self.seed = random.randint(0, 10000)
-        tempTerrain = []
+    def scramble_seed(self, seed: int) -> int:
+        # XOR-based hash: fast and repeatable
+        seed ^= (seed << 13) & 0xFFFFFFFF
+        seed ^= (seed >> 17)
+        seed ^= (seed << 5) & 0xFFFFFFFF
+        return seed
 
-        # Step 1: Collect raw noise values
+    def generate_terrain(self):
+        # Step 0: Set or scramble the seed
+        if self.seed is None:
+            self.seed = random.randint(-49999, 50000)
+        scrambled = self.scramble_seed(self.seed)
+
+        # Step 1: Derive phase offset and octave count from scrambled seed
+        offset = ((scrambled // 1000) % 100) / 10.0         # 0.0 to 9.9
+        octaves = 3 + (scrambled % 6)                       # 3 to 8 octaves
+
+        # Step 2: Collect raw noise values
+        tempTerrain = []
         for x in range(WIDTH):
-            noise_val = pnoise1(x / self.scale + self.seed, octaves=self.octaves)
+            noise_val = pnoise1((x + offset) / self.scale + self.seed, octaves=octaves)
             tempTerrain.append(noise_val)
 
-        # Step 2: Find the actual min and max of the noise
+        # Step 3: Normalize values to min_height → max_height
         min_val = min(tempTerrain)
         max_val = max(tempTerrain)
-        val_range = max_val - min_val if max_val != min_val else 1  # avoid divide by zero
+        val_range = max_val - min_val if max_val != min_val else 1
 
-        # Step 3: Normalize to 0-1 based on actual range, then scale to min/max height
         terrain = []
         for raw in tempTerrain:
             normalized = (raw - min_val) / val_range
@@ -64,7 +76,6 @@ class Terrain:
             terrain.append(height)
 
         return terrain
-
 @dataclass
 class Tank:    
     height: float
@@ -150,6 +161,7 @@ turn_overlay_timer = 1500  # milliseconds
 turn_overlay_start = pygame.time.get_ticks()
 show_turn_overlay = True
 menuconfig = None
+config_loaded = False
 
 # --- Initialize ---
 pygame.init()
@@ -236,7 +248,7 @@ def apply_explosion_with_collapse(terrain_heights, x_center, y_center, radius=20
     original_heights = terrain_heights[:]
 
     for dx in range(-int(radius), int(radius) + 1):
-        x = x_center + dx
+        x = int(x_center) + dx
         if 0 <= x < len(terrain_heights):
             try:
                 dy = math.sqrt(radius**2 - dx**2)
@@ -430,7 +442,7 @@ class GameConfigUI:
 
         tk.Label(self.terrain_frame, text="Terrain Seed:").grid(row=0, column=0)
         self.terrain_seed = tk.Entry(self.terrain_frame)
-        self.terrain_seed.insert(0, "12345")
+        self.terrain_seed.insert(0, str(random.randint(0, 10000)))
         self.terrain_seed.grid(row=0, column=1)
 
         self.min_height_var = tk.IntVar(value=10)
@@ -511,7 +523,7 @@ class GameConfigUI:
         self.root.destroy()  # Close the UI and proceed to game
 
 def load_game_config():
-    global tanks, terrain
+    global tanks, terrain, config_loaded, active_tank_index
     # Load the game config from the menu
     if menuconfig:
         tanks = []
@@ -529,11 +541,14 @@ def load_game_config():
                 color = player["color"],
                 fuel= float(menuconfig["fuel"]),
                 health= float(menuconfig["health"]),
+                max_health= float(menuconfig["health"]),
                 x = (WIDTH // (len(player_data)+1)) * (i + 1),                
             )
             menuTank.cannonColor = (255 - menuTank.color[0], 255 - menuTank.color[1], 255 - menuTank.color[2])
             menuTank.y = bounds.y2 - menuTank.height - menuTank.bottomCollide()
             tanks.append(menuTank)
+        active_tank_index = random.randint(0, len(tanks) - 1)
+        config_loaded = True
 
 # --- Main loop ---
 active_tank_index = 0  # 0 for player 1, 1 for player 2
@@ -548,7 +563,8 @@ while running:
     elif current_state == GameState.PLAYING:
 
         # Initialize tanks based on the collected config
-        load_game_config()
+        if not config_loaded:
+            load_game_config()
 
         screen.fill((30, 30, 30))
         dt = clock.tick(FPS) / 1000
@@ -559,7 +575,25 @@ while running:
             if event.type == pygame.QUIT:
                 running = False
 
-        tank = tanks[active_tank_index]
+        def getActiveTank(tanks, active_tank_index):
+            # Find last active tank
+            last_index = (len(tanks) + active_tank_index - 1) % len(tanks)
+            while not tanks[last_index].active:
+                last_index = (last_index - 1) % len(tanks)
+                if last_index == active_tank_index:
+                    return None, active_tank_index, True  # All tanks inactive
+
+            # Find next active tank
+            next_index = active_tank_index
+            while not tanks[next_index].active:
+                next_index = (next_index + 1) % len(tanks)
+                if next_index == last_index:
+                    return tanks[next_index], next_index, True  # One tank left = game over
+            return tanks[next_index], next_index, False  # Game continues
+        tank, active_tank_index, game_over = getActiveTank(tanks, active_tank_index)
+        if game_over:
+            game_state = GameState.GAME_OVER
+        
         # --- Input ---
         #print(list(filter(lambda c: c == True, pygame.key.get_pressed())))
         for event in events:
@@ -681,8 +715,15 @@ while running:
             else:
                 fade_factor = max(0, 255 - int((elapsed / turn_overlay_timer) * 255))
                 overlay_color = (*tanks[active_tank_index].color, fade_factor)
-                font_overlay = pygame.font.SysFont(None, 48)
-                text_surface = font_overlay.render(tanks[active_tank_index].name, True, overlay_color)
+                # check Game Over to add " wins!" to display text"
+                if game_over:
+                    turn_overlay_timer = 150000  # milliseconds
+                    font_overlay = pygame.font.SysFont(None, 64)
+                    text_surface = font_overlay.render(f"{tanks[active_tank_index].name} wins!", True, overlay_color)
+                    draw_outlined_text(f"{tanks[active_tank_index].name} wins!", font_overlay, WIDTH // 2 - 60, 60, overlay_color)
+                else:
+                    font_overlay = pygame.font.SysFont(None, 48)
+                    text_surface = font_overlay.render(tanks[active_tank_index].name, True, overlay_color)
                 draw_outlined_text(tanks[active_tank_index].name, font_overlay, WIDTH // 2 - 60, 60, overlay_color)
 
 
