@@ -120,7 +120,80 @@ class Tank:
             strength=self.strength
         )
     def explode(self):
+        tankExplosionSound.play()
         Pending_Explosion_Next.append((self.x + self.width // 2, self.y + self.height // 2, self.explosionStrength * (self.fuel+.7), 600, self))
+
+@dataclass
+class Particle:
+    x: float
+    y: float
+    vx: float
+    vy: float
+    life: int
+    color: pygame.Color
+
+    def update(self):
+        self.x += self.vx
+        self.y += self.vy
+        self.vy += 0.05  # gravity
+        self.life -= 1
+        self.color.a = max(0, self.life * 3)
+
+    def draw(self, surf):
+        if self.life > 0:
+            s = pygame.Surface((4, 4), pygame.SRCALPHA)
+            pygame.draw.circle(s, self.color, (2, 2), 2)
+            surf.blit(s, (self.x - 2, self.y - 2))
+
+
+@dataclass
+class Firework:
+    x: int
+    y: int
+    target_y: int
+    trail: list = field(default_factory=list)
+    exploded: bool = False
+    particles: list = field(default_factory=list)
+    color: pygame.Color = field(default_factory=lambda: pygame.Color(0))
+
+    def __post_init__(self):
+        hue = random.randint(0, 360)
+        self.color.hsva = (hue, 100, 100, 100)
+
+    def update(self):
+        if not self.exploded:
+            self.y -= 5
+            if len(self.trail) == 0 or abs(self.trail[-1][1] - self.y) > 5:
+                self.trail.append((self.x, self.y))
+            if self.y <= self.target_y:
+                self.explode()
+        else:
+            for p in self.particles:
+                p.update()
+
+    def explode(self):
+        self.exploded = True
+        fireworksExplosionSound.play()
+        for _ in range(40):
+            angle = random.uniform(0, 2 * math.pi)
+            speed = random.uniform(2, 8)
+            vx = math.cos(angle) * speed / 3
+            vy = math.sin(angle) * speed / 3
+            particle_color = pygame.Color(self.color.r, self.color.g, self.color.b, self.color.a)
+
+            particle_color.a = 255
+            self.particles.append(Particle(self.x, self.y, vx, vy, 85, particle_color))
+
+    def draw(self, surf):
+        if not self.exploded:
+            for pos in self.trail:
+                pygame.draw.circle(surf, (255, 255, 255), pos, 2)
+            pygame.draw.circle(surf, (255, 255, 255), (self.x, self.y), 3)
+        else:
+            for p in self.particles:
+                p.draw(surf)
+
+
 
     
 @dataclass
@@ -147,14 +220,19 @@ class GameState(Enum):
 current_state = GameState.MENU
 
 adjectives = [
+    
     "Wiggly", "Brave", "Soggy", "Tiny", "Curious", "Nervous", 
     "Fluffy", "Grumpy", "Sneaky", "Bouncy", "Moist", "Silly", 
-    "Sleepy", "Spicy", "Dry", "Bold","Crazy","Chubby", "Loud"
+    "Sleepy", "Spicy", "Dry", "Bold", "Crazy", "Chubby", "Loud",
+    "~Sgt.", "~Cpt.", "~Gen.", "~Maj.", "~Pvt.", "~Cpl.", "~Lt.", "~Col.", 
+    "~Shifu", "~Master", "~Sensei", "~Guru"
 ]
 animals = [
+    "Monkey", "Rock", "Bear", "Lizard", "Turtle", "Fish",
     "Penguin", "Tiger", "Duck", "Sloth", "Panther", "Elephant", 
     "Giraffe", "Fox", "Moose", "Meerkat", "Panda", "Llama",
-    "Koala", "Turtle", "Otter", "Hedgehog", "Raccoon"
+    "Koala", "Turtle", "Otter", "Hedgehog", "Raccoon",
+    "Napkin", "Sponge", "Cactus", "Onion", "Beet"
 ]
 
 # --- Constants ---
@@ -162,24 +240,47 @@ WIDTH, HEIGHT = 1000, 720
 bounds = Bounds(5, WIDTH - 5, 5, HEIGHT - 105)
 FPS = 60
 GRAVITY = 0.5
-Shot_Show_Timer = 0
-Shot_Show_Timer_Max = 333  # in milliseconds
-Pending_Explosion = None  # will store (x, y, radius, timer)
-Pending_Explosion_Next = []  # will store [] of (x, y, radius, timer)
-turn_overlay_timer = 1500  # milliseconds
-turn_overlay_start = pygame.time.get_ticks()
-show_turn_overlay = True
-menuconfig = None
-config_loaded = False
-show_game_over_overlay = False
-game_over_overlay_start = 0
+def GameInit():
+    global Shot_Show_Timer, Shot_Show_Timer_Max, Pending_Explosion, Pending_Explosion_Next
+    global turn_overlay_timer, turn_overlay_start, show_turn_overlay
+    global menuconfig, config_loaded, show_game_over_overlay, game_over_overlay_start
+    global fireworks, spawn_interval
+    Shot_Show_Timer = 0
+    Shot_Show_Timer_Max = 333  # in milliseconds
+    Pending_Explosion = None  # will store (x, y, radius, timer)
+    Pending_Explosion_Next = []  # will store [] of (x, y, radius, timer)
+    turn_overlay_timer = 1500  # milliseconds
+    turn_overlay_start = pygame.time.get_ticks()
+    show_turn_overlay = True
+    menuconfig = None
+    config_loaded = False
+    show_game_over_overlay = False
+    game_over_overlay_start = 0
+    fireworks = []
+    spawn_interval = 0
+
 
 
 # --- Initialize ---
 pygame.init()
+pygame.mixer.init()
+GameInit()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Scorched Earth Prototype")
 clock = pygame.time.Clock()
+
+# --- initialize sounds --- 
+menuTheme = "assets/sounds/menu_theme.mp3"
+gameTheme = "assets/sounds/game_theme.mp3"
+explosionSound = pygame.mixer.Sound("assets/sounds/explosion.wav")
+explosionSound.set_volume(0.8)
+tankExplosionSound = pygame.mixer.Sound("assets/sounds/tank_explosion.wav")
+tankExplosionSound.set_volume(0.5)
+shotSound = pygame.mixer.Sound("assets/sounds/shot.wav")
+shotSound.set_volume(0.8)
+fireworksExplosionSound = pygame.mixer.Sound("assets/sounds/fireworks_explosion.wav")
+fireworksExplosionSound.set_volume(0.8)
+
 
 # --- Terrain initialize ---
 terrain = Terrain()
@@ -314,6 +415,7 @@ def apply_gravity_to_tank(tank, terrain_heights, max_height, useRight=False):
 
 # --- Draw helper functions ---
 def draw_explosion_preview(screen, x_center, y_center, radius):
+    explosionSound.play()
     preview_color = (255, 50, 50)
     alpha_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
     pygame.draw.circle(alpha_surface, (*preview_color, 128), (x_center, y_center), radius)
@@ -511,12 +613,15 @@ class GameConfigUI:
             self.terrain_seed.insert(0, str(random.randint(0, 100000)))
 
     def generate_random_name(self, index=None):
+        randomAdjective = random.choice(adjectives)
+        randomAnimal = random.choice(animals)
+        newName = f"The {randomAdjective} {randomAnimal}" if randomAdjective[0] != "~" else f"{randomAdjective[1:]} {randomAnimal}"
         if index is not None:
             name_entry = self.player_names[index]
             name_entry.delete(0, tk.END)
-            name_entry.insert(0, f"The {random.choice(adjectives)} {random.choice(animals)}")
+            name_entry.insert(0, newName)
         else:
-            return f"The {random.choice(adjectives)} {random.choice(animals)}"
+            return newName
     def update_players(self, count):
         # Clean up old widgets
         for widget_group in self.player_widgets:
@@ -561,7 +666,7 @@ class GameConfigUI:
         color = colorchooser.askcolor()[1]
         if color:
             self.colors[index] = color
-            self.player_names[index][1].config(bg=color)
+            self.player_widgets[index][2].config(bg=color)
 
     def collect_config(self):
         global current_state, menuconfig
@@ -581,8 +686,6 @@ class GameConfigUI:
             "health": self.health_var.get()
         }
 
-        print("Collected Game Config:")
-        print(menuconfig)
         current_state = GameState.PLAYING
         self.root.destroy()  # Close the UI and proceed to game
 
@@ -613,7 +716,11 @@ def load_game_config():
             tanks.append(menuTank)
         active_tank_index = random.randint(0, len(tanks) - 1)
         config_loaded = True
-
+        pygame.mixer.music.fadeout(1000)  # Fade out the menu theme
+        pygame.mixer.music.load(gameTheme)
+        pygame.mixer.music.set_volume(0.12)
+        pygame.mixer.music.play(-1) 
+ 
 # --- Main loop ---
 active_tank_index = 0  # 0 for player 1, 1 for player 2
 running = True
@@ -621,12 +728,14 @@ while running:
 
     # Run the config UI
     if current_state == GameState.MENU:
+        pygame.mixer.music.load(menuTheme)
+        pygame.mixer.music.set_volume(0.3)
+        pygame.mixer.music.play(-1) 
         root = tk.Tk()
         app = GameConfigUI(root)
         root.mainloop()
-    elif current_state == GameState.PLAYING:
-
-        # Initialize tanks based on the collected config
+    elif current_state == GameState.PLAYING or current_state == GameState.GAME_OVER:
+       # Initialize tanks based on the collected config
         if not config_loaded:
             load_game_config()
 
@@ -656,30 +765,59 @@ while running:
             return tanks[next_index], next_index, False  # Game continues
         tank, active_tank_index, game_over = getActiveTank(tanks, active_tank_index)
         if game_over:
-            game_state = GameState.GAME_OVER
+            current_state = GameState.GAME_OVER
         
         # --- Input ---
-        #print(list(filter(lambda c: c == True, pygame.key.get_pressed())))
-        for event in events:
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE and projectile is None:
-                    print(active_tank_index)
-                    projectile = tank.fire(tank.cannonPower)
+        if current_state == GameState.PLAYING:
+            for event in events:
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_SPACE and projectile is None:
+                        # Fire the cannon
+                        shotSound.play()
+                        projectile = tank.fire(tank.cannonPower)
 
-        # For smooth continuous controls (like movement or aim), use key.get_pressed()
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT]:
-            tank.aim("left")
-        if keys[pygame.K_RIGHT]:
-            tank.aim("right")
-        if keys[pygame.K_UP]:
-            tank.cannonPower = min(100, tank.cannonPower + .1)
-        if keys[pygame.K_DOWN]:
-            tank.cannonPower = max(0, tank.cannonPower - .1)
-        if keys[pygame.K_RCTRL] and tank.fuel > 0:
-            tank.move("Right")
-        if keys[pygame.K_RALT] and tank.fuel > 0:
-            tank.move("Left")
+            # For smooth continuous controls (like movement or aim), use key.get_pressed()
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_LEFT]:
+                tank.aim("left")
+            if keys[pygame.K_RIGHT]:
+                tank.aim("right")
+            if keys[pygame.K_UP]:
+                tank.cannonPower = min(100, tank.cannonPower + .1)
+            if keys[pygame.K_DOWN]:
+                tank.cannonPower = max(0, tank.cannonPower - .1)
+            if keys[pygame.K_RCTRL] and tank.fuel > 0:
+                tank.move("Right")
+            if keys[pygame.K_RALT] and tank.fuel > 0:
+                tank.move("Left")
+        elif current_state == GameState.GAME_OVER:
+            # spawn fireworks
+            spawn_timer = 120
+            check_interval = pygame.time.get_ticks() - turn_overlay_start - spawn_interval
+            if check_interval > spawn_timer:
+                fireworks.append(Firework(
+                    x=random.randint(100, WIDTH - 100),
+                    y=HEIGHT,
+                    target_y=random.randint(100, HEIGHT // 2),
+                ))
+                spawn_interval += check_interval + spawn_timer
+
+            for fw in fireworks[:]:
+                fw.update()
+                fw.draw(screen)
+                if fw.exploded and all(p.life <= 0 for p in fw.particles):
+                    fireworks.remove(fw)
+            for event in events:
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_SPACE:
+                        fireworks.append(Firework(
+                            x=random.randint(100, WIDTH - 100),
+                            y=HEIGHT,
+                            target_y=random.randint(100, HEIGHT // 2),
+                        ))
+
         # --- Draw Terrain ---
         terrain_coords = [(0, bounds.y2)]  # Start at bottom-left corner
 
@@ -718,6 +856,8 @@ while running:
 
                     # Check collision at intermediate position
                     result = check_projectile_collision(projectile.x, projectile.y, terrain.heightMap, WIDTH, HEIGHT, tanks)
+                    if result != CollisionResult.NO_COLLISION:
+                        break
                 projectile.vy += GRAVITY
             def nextTurn():
                 global active_tank_index, show_turn_overlay, turn_overlay_start
@@ -743,7 +883,6 @@ while running:
                         nextTurn()
 
                     case CollisionResult.MISS_OFFSCREEN:
-                        print("Missed! Flew off screen.")
                         projectile = None
                         nextTurn()
 
@@ -809,7 +948,7 @@ while running:
                 #init the menu again
                 tanks = []
                 terrain = Terrain()
-                config_loaded = False
+                GameInit()
                 current_state = GameState.MENU
 
 
