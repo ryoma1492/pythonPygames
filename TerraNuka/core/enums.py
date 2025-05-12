@@ -1,5 +1,9 @@
 # core/enums.py
 
+if __name__ == "__main__":
+    raise RuntimeError("This module is not meant to be run directly.")
+
+
 from enum import Enum, auto
 
 class CollisionResult(Enum):

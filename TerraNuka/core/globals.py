@@ -1,8 +1,12 @@
 # core/globals.py
 
+if __name__ == "__main__":
+    raise RuntimeError("This module is not meant to be run directly.")
+
+
 import pygame
-from .config import WIDTH
-from .terrain import Terrain
+from core.config import WIDTH, HEIGHT, GRAVITY, FPS
+from core.terrain import Terrain
 
 # --- Runtime State ---
 terrain = Terrain()

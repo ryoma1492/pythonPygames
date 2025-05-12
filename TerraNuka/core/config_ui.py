@@ -1,5 +1,9 @@
 # core/ui.py
 
+
+if __name__ == "__main__":
+    raise RuntimeError("This module is not meant to be run directly.")
+
 import tkinter as tk
 from tkinter import colorchooser
 import random

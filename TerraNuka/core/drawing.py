@@ -1,5 +1,9 @@
 # core/drawing.py
 
+
+if __name__ == "__main__":
+    raise RuntimeError("This module is not meant to be run directly.")
+
 import math
 import pygame
 
@@ -16,14 +20,14 @@ def draw_health_bar(screen, tank: Tank, bar_width=30, bar_height=6):
     pygame.draw.rect(screen, (0, 255, 0), (x, y, fill_width, bar_height))
     pygame.draw.rect(screen, (180, 180, 180), (x - 1, y - 1, bar_width + 1, bar_height + 1), 1)
 
-def draw_outlined_text(text, font, x, y, main_color, outline_color=(255, 255, 255), outline_thickness=2):
+def draw_outlined_text(screen, text, font, x, y, main_color, outline_color=(255, 255, 255), outline_thickness=2):
     base = font.render(text, True, main_color)
     for dx in [-outline_thickness, 0, outline_thickness]:
         for dy in [-outline_thickness, 0, outline_thickness]:
             if dx != 0 or dy != 0:
                 outline = font.render(text, True, outline_color)
                 screen.blit(outline, (x + dx, y + dy))
-    screen.blit(base, (x, y))
+                screen.blit(base, (x, y))
 
 def draw_explosion_preview(screen, x_center, y_center, radius):
     from .globals import explosionSound

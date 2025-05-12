@@ -1,5 +1,9 @@
 # core/terrain.py
 
+
+if __name__ == "__main__":
+    raise RuntimeError("This module is not meant to be run directly.")
+
 import random
 from dataclasses import dataclass, field
 from noise import pnoise1

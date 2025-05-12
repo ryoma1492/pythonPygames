@@ -1,12 +1,18 @@
 # core/entities.py
 
+
+if __name__ == "__main__":
+    raise RuntimeError("This module is not meant to be run directly.")
+
 import math
 import random
 import pygame
 from dataclasses import dataclass, field
+from collections import defaultdict 
 
-from .config import bounds
-from .enums import CollisionResult
+from core.config import bounds
+from core.enums import CollisionResult
+
 
 @dataclass
 class Projectile:
@@ -39,7 +45,7 @@ class Tank:
     active: bool = True
     money: int = 100
     inventory: dict[str, int] = field(default_factory=lambda: defaultdict(int))
-    
+
     def bottomCollide(self):
         from .globals import terrain  # lazy import to avoid circular dependency
         return max(terrain.heightMap[int(self.x) + n] for n in range(self.width))

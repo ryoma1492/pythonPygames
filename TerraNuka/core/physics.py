@@ -1,6 +1,11 @@
 # core/physics.py
 
+
+if __name__ == "__main__":
+    raise RuntimeError("This module is not meant to be run directly.")
+
 import math
+import pygame
 from .config import WIDTH, HEIGHT, bounds
 from .enums import CollisionResult
 from .entities import Tank
