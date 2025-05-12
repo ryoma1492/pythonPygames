@@ -259,9 +259,9 @@ def GameInit():
     fireworks = []
     spawn_interval = 0
 
+ 
 
-
-# --- Initialize ---
+# --- Initialize ----
 pygame.init()
 pygame.mixer.init()
 GameInit()
