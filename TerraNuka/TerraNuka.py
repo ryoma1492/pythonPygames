@@ -6,6 +6,7 @@ from noise import pnoise1
 import random
 import tkinter as tk
 from tkinter import colorchooser
+from collections import defaultdict
 
 
 
@@ -76,6 +77,7 @@ class Terrain:
             terrain.append(height)
 
         return terrain
+    
 @dataclass
 class Tank:    
     height: float
@@ -96,6 +98,9 @@ class Tank:
     explosionStrength: float = 70
     fuel: float = .5
     active: bool = True    
+    # use defaultfactory to avoid mutable default
+    inventory: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    current_weapon: str = "Baby Missile"
     def bottomCollide(self):
         return max(terrain.heightMap[int(self.x) + n] for n in range(self.width))
     def aim(self, direction: str):
@@ -205,6 +210,22 @@ class Projectile:
     active: bool = True  # Optional default so you can deactivate on collision
     strength: int = 10
 
+@dataclass
+class Weapon:
+    name: str
+    cost: int
+    damage: int
+    explosion_radius: int
+    color: tuple = (255, 255, 0)
+
+# Global registry
+weapon_data = {
+    "Baby Missile": Weapon("Baby Missile", 0, 10, 20, (0, 255, 255)),
+    "Standard Missile": Weapon("Standard Missile", 10, 30, 30, (255, 0, 0)),
+    "Nuke": Weapon("Nuke", 100, 100, 60, (255, 128, 0))
+}
+
+
 class CollisionResult(Enum):
     MISS_OFFSCREEN = auto()
     MISS_OFFTOP = auto()
@@ -234,6 +255,15 @@ animals = [
     "Koala", "Turtle", "Otter", "Hedgehog", "Raccoon",
     "Napkin", "Sponge", "Cactus", "Onion", "Beet"
 ]
+ALL_WEAPONS = ["Baby Missile", "Nuke",  # etc.
+"Leap Frog","Funky Bomb","MIRV","Death's Head", "Napalm",
+"Hot Napalm","Tracer","Smoke Tracer", "Baby Roller", 
+"Roller","Heavy Roller", "Riot Charge", "Riot Blast", 
+"Riot Bomb","Heavy Riot Bomb","Baby Digger", "Digger",
+"Heavy Digger","Baby Sandhog","Sandhog","Heavy Sandhog",
+"Dirt Clod","Dirt Ball","Ton of Dirt","Liquid Dirt",
+"Dirt Charge","Earth Disrupter","Plasma Blast","Laser"]
+
 
 # --- Constants ---
 WIDTH, HEIGHT = 1000, 720
@@ -422,6 +452,15 @@ def draw_explosion_preview(screen, x_center, y_center, radius):
     screen.blit(alpha_surface, (0, 0))
     pygame.display.flip()
 
+def cycle_weapon(tank, direction=1):
+    owned_weapons = [w for w in ALL_WEAPONS if tank.inventory.get(w, 0) > 0]
+    if not owned_weapons:
+        return  # no weapons available
+
+    current_index = owned_weapons.index(tank.current_weapon) if tank.current_weapon in owned_weapons else 0
+    new_index = (current_index + direction) % len(owned_weapons)
+    tank.current_weapon = owned_weapons[new_index]
+
 def draw_hud(screen, tank, hud_height=100):
     """Draw the HUD with a half-moon angle indicator, speedometer-like fuel gauge, and odometer-style missile type."""
     # HUD background
@@ -480,7 +519,7 @@ def draw_hud(screen, tank, hud_height=100):
 
     # --- Odometer-Style Missile Type ---
     missile_label = font.render("MISSILE", True, (255, 255, 255))
-    missile_type = font.render("Baby Missile", True, (255, 255, 255))  # Placeholder for actual missile type
+    missile_type = font.render(tanks[active_tank_index].current_weapon, True, (255, 255, 255))
     pygame.draw.rect(screen, (50, 50, 50), (555, HEIGHT - hud_height + 10, 200, 60))  # Background
     pygame.draw.rect(screen, (200, 200, 200), (555, HEIGHT - hud_height + 10, 200, 60), 3)  # Border
     screen.blit(missile_label, (565, HEIGHT - hud_height + 15))
@@ -713,6 +752,9 @@ def load_game_config():
             )
             menuTank.cannonColor = (255 - menuTank.color[0], 255 - menuTank.color[1], 255 - menuTank.color[2])
             menuTank.y = bounds.y2 - menuTank.height - menuTank.bottomCollide()
+            menuTank.inventory["Nuke"] += 1
+            menuTank.inventory["Baby Missile"] += 99
+            menuTank.current_weapon = "Baby Missile"
             tanks.append(menuTank)
         active_tank_index = random.randint(0, len(tanks) - 1)
         config_loaded = True
@@ -775,6 +817,11 @@ while running:
                         # Fire the cannon
                         shotSound.play()
                         projectile = tank.fire(tank.cannonPower)
+                    elif event.key == pygame.K_RSHIFT:
+                        cycle_weapon(tanks[active_tank_index], direction=1)
+                    elif event.key == pygame.K_SLASH:
+                        cycle_weapon(tanks[active_tank_index], direction=-1)
+
 
             # For smooth continuous controls (like movement or aim), use key.get_pressed()
             keys = pygame.key.get_pressed()

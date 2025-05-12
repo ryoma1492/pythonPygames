@@ -37,7 +37,9 @@ class Tank:
     explosionStrength: float = 70
     fuel: float = 0.5
     active: bool = True
-
+    money: int = 100
+    inventory: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    
     def bottomCollide(self):
         from .globals import terrain  # lazy import to avoid circular dependency
         return max(terrain.heightMap[int(self.x) + n] for n in range(self.width))
