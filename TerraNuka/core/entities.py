@@ -15,13 +15,28 @@ from core.enums import CollisionResult
 
 
 @dataclass
+class Weapon:
+    name: str
+    cost: int
+    damage: int
+    explosion_radius: int
+    color: tuple = (255, 255, 0)
+
+weapon_data = {
+    "Baby Missile": Weapon("Baby Missile", 0, 10, 20, (0, 255, 255)),
+    "Missile": Weapon("Missile", 10, 30, 30, (255, 0, 0)),
+    "Nuke": Weapon("Nuke", 100, 100, 60, (255, 128, 0))
+}
+
+@dataclass
 class Projectile:
     x: float
     y: float
     vx: float
     vy: float
     active: bool = True
-    strength: int = 10
+    type: Weapon = None
+
 
 @dataclass
 class Tank:
@@ -44,8 +59,10 @@ class Tank:
     fuel: float = 0.5
     active: bool = True
     money: int = 100
+    # use defaultfactory to avoid mutable default
     inventory: dict[str, int] = field(default_factory=lambda: defaultdict(int))
-
+    current_weapon_str: str = "Baby Missile"
+    current_weapon: Weapon = field(default_factory=lambda: weapon_data["Baby Missile"])
     def bottomCollide(self):
         from .globals import terrain  # lazy import to avoid circular dependency
         return max(terrain.heightMap[int(self.x) + n] for n in range(self.width))
@@ -69,7 +86,7 @@ class Tank:
             y=self.y - math.sin(rad) * self.cannonLen,
             vx=shot_speed * math.cos(rad),
             vy=-shot_speed * math.sin(rad),
-            strength=self.strength
+            type=self.current_weapon
         )
 
     def explode(self):
@@ -78,7 +95,7 @@ class Tank:
         Pending_Explosion_Next.append((
             self.x + self.width // 2,
             self.y + self.height // 2,
-            self.explosionStrength * (self.fuel + 0.7),
+            Weapon("self", 0, self.explosionStrength, self.explosionStrength * (self.fuel + 0.7), self.color),
             600,
             self
         ))
@@ -151,3 +168,4 @@ class Firework:
         else:
             for p in self.particles:
                 p.draw(surf)
+

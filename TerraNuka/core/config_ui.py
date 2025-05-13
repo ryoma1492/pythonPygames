@@ -2,7 +2,9 @@
 
 
 if __name__ == "__main__":
-    raise RuntimeError("This module is not meant to be run directly.")
+    import sys
+    print("This module is not meant to be run directly.", file=sys.stderr)
+    sys.exit(0)
 
 import tkinter as tk
 from tkinter import colorchooser
@@ -167,8 +169,8 @@ class GameConfigUI:
         current_state = GameState.PLAYING
         self.root.destroy()
 
-def load_game_config():
-    from .globals import terrain, tanks, config_loaded
+def load_game_config() -> bool:
+    from .globals import terrain, tanks
     global menuconfig
 
     if menuconfig:
@@ -180,7 +182,7 @@ def load_game_config():
         terrain.heightMap = terrain.generate_terrain()
 
         for i, player in enumerate(player_data):
-            tank = Tank(
+            menuTank = Tank(
                 height=12,
                 width=24,
                 name=player["name"],
@@ -190,8 +192,12 @@ def load_game_config():
                 max_health=float(menuconfig["health"]),
                 x=(WIDTH // (len(player_data) + 1)) * (i + 1),
             )
-            tank.cannonColor = tuple(255 - c for c in tank.color)
-            tank.y = bounds.y2 - tank.height - tank.bottomCollide()
-            tanks.append(tank)
+            menuTank.cannonColor = tuple(255 - c for c in menuTank.color)
+            menuTank.y = bounds.y2 - menuTank.height - menuTank.bottomCollide()
+            menuTank.inventory["Nuke"] += 1
+            menuTank.inventory["Baby Missile"] += 99
+            menuTank.current_weapon_str = "Baby Missile"
+            tanks.append(menuTank)
 
-        config_loaded[0] = True
+        return True
+    return False

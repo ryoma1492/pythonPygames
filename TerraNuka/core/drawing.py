@@ -29,12 +29,12 @@ def draw_outlined_text(screen, text, font, x, y, main_color, outline_color=(255,
                 screen.blit(outline, (x + dx, y + dy))
                 screen.blit(base, (x, y))
 
-def draw_explosion_preview(screen, x_center, y_center, radius):
+def draw_explosion_preview(screen, x_center, y_center, weapon_type):
     from .globals import explosionSound
     explosionSound.play()
     preview_color = (255, 50, 50)
     alpha_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-    pygame.draw.circle(alpha_surface, (*preview_color, 128), (x_center, y_center), radius)
+    pygame.draw.circle(alpha_surface, (*preview_color, 128), (x_center, y_center), weapon_type.explosion_radius)
     screen.blit(alpha_surface, (0, 0))
     pygame.display.flip()
 
@@ -86,7 +86,7 @@ def draw_hud(screen, tank: Tank, hud_height=100):
     screen.blit(fuel_label, (fuel_bar_x + fuel_bar_width // 2 - 50, fuel_bar_y - 25))
 
     missile_label = font.render("MISSILE", True, (255, 255, 255))
-    missile_type = font.render("Baby Missile", True, (255, 255, 255))  # Placeholder
+    missile_type = font.render(tank.current_weapon_str, True, (255, 255, 255))
     pygame.draw.rect(screen, (50, 50, 50), (555, HEIGHT - hud_height + 10, 200, 60))
     pygame.draw.rect(screen, (200, 200, 200), (555, HEIGHT - hud_height + 10, 200, 60), 3)
     screen.blit(missile_label, (565, HEIGHT - hud_height + 15))

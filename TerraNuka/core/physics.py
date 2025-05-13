@@ -28,9 +28,9 @@ def check_projectile_collision(x: float, y: float, terrain_heights: list[int], w
 
     return CollisionResult.NO_COLLISION
 
-def apply_explosion_with_collapse(terrain_heights, x_center, y_center, radius=20):
+def apply_explosion_with_collapse(terrain_heights, x_center, y_center, weapon_type):
     original_heights = terrain_heights[:]
-
+    radius = weapon_type.explosion_radius
     for dx in range(-int(radius), int(radius) + 1):
         x = int(x_center) + dx
         if 0 <= x < len(terrain_heights):
@@ -50,11 +50,11 @@ def apply_explosion_with_collapse(terrain_heights, x_center, y_center, radius=20
             if height_diff > 0:
                 terrain_heights[x] = min(bounds.y2, terrain_heights[x] + height_diff)
 
-def apply_explosion_damage(tank, projectile):
-    explosion_x = projectile.x
-    explosion_y = projectile.y
-    radius = projectile.strength
-    max_damage = projectile.strength
+def apply_explosion_damage(tank, weapon_type):
+    explosion_x = weapon_type.x
+    explosion_y = weapon_type.y
+    radius = weapon_type.type.explosion_radius
+    max_damage = weapon_type.type.damage
 
     closest_x = max(tank.x, min(explosion_x, tank.x + tank.width))
     closest_y = max(tank.y, min(explosion_y, tank.y + tank.height))

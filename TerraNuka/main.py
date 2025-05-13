@@ -18,6 +18,7 @@ from core.physics import (
     apply_explosion_damage,
     apply_explosion_with_collapse,
 )
+from core.inventory import cycle_weapon
 from core.drawing import (
     draw_hud,
     draw_health_bar,
@@ -47,8 +48,8 @@ while running:
         current_state = GameState.PLAYING
 
     elif current_state in (GameState.PLAYING, GameState.GAME_OVER):
-        if not g.config_loaded[0]:
-            load_game_config()
+        if not g.config_loaded:
+            g.config_loaded = load_game_config()
             pygame.mixer.music.fadeout(1000)
             pygame.mixer.music.load(g.gameTheme)
             pygame.mixer.music.set_volume(0.12)
@@ -87,6 +88,10 @@ while running:
                     if event.key == pygame.K_SPACE:
                         g.shotSound.play()
                         g.projectile = tank.fire(tank.cannonPower)
+                    elif event.key == pygame.K_RSHIFT:
+                        cycle_weapon(tank, direction=1)
+                    elif event.key == pygame.K_SLASH:
+                        cycle_weapon(tank, direction=-1)
 
             keys = pygame.key.get_pressed()
             if keys[pygame.K_LEFT]:
@@ -176,10 +181,10 @@ while running:
             )
             match collision:
                 case CollisionResult.HIT_TERRAIN | CollisionResult.HIT_TANK:
-                    draw_explosion_preview(screen, g.projectile.x, g.projectile.y, g.projectile.strength)
+                    draw_explosion_preview(screen, g.projectile.x, g.projectile.y, g.projectile.type)
                     g.Shot_Show_Timer = 0
                     g.Pending_Explosion = (
-                        int(g.projectile.x), int(g.projectile.y), g.projectile.strength,
+                        int(g.projectile.x), int(g.projectile.y), g.projectile.type,
                         g.Shot_Show_Timer_Max, None
                     )
                     for t in g.tanks:
@@ -193,11 +198,11 @@ while running:
                     next_turn()
 
         if g.Pending_Explosion:
-            impact_x, impact_y, radius, anim_timer, origin = g.Pending_Explosion
-            draw_explosion_preview(screen, impact_x, impact_y, radius)
+            impact_x, impact_y, weapon_type, anim_timer, origin = g.Pending_Explosion
+            draw_explosion_preview(screen, impact_x, impact_y, weapon_type)
             g.Shot_Show_Timer += clock.get_time()
             if g.Shot_Show_Timer >= anim_timer:
-                apply_explosion_with_collapse(g.terrain.heightMap, impact_x, impact_y, radius)
+                apply_explosion_with_collapse(g.terrain.heightMap, impact_x, impact_y, weapon_type)
                 g.Shot_Show_Timer = 0
                 if origin:
                     origin.active = False
@@ -235,7 +240,7 @@ while running:
                 g.tanks.clear()
                 g.terrain = Terrain()
                 current_state = GameState.MENU
-                g.config_loaded[0] = False
+                g.config_loaded = False
 
         pygame.display.flip()
 
