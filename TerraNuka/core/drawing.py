@@ -30,6 +30,7 @@ def draw_outlined_text(screen, text, font, x, y, main_color, outline_color=(255,
                 screen.blit(base, (x, y))
 
 def draw_explosion_preview(screen, x_center, y_center, weapon_type):
+    print("💥 Explosion triggered")
     from .globals import explosionSound
     explosionSound.play()
     preview_color = (255, 50, 50)
